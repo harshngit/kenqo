@@ -2,7 +2,8 @@ import { useUserStore } from '../../store';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import { Badge } from '../../components/ui/badge';
-import { FileText, Search, CheckCircle2, Clock, Users } from 'lucide-react';
+import { Button } from '../../components/ui/button';
+import { FileText, Search, CheckCircle2, Clock, Users, ArrowUpRight } from 'lucide-react';
 import { useState } from 'react';
 
 const AdminDocuments = () => {
@@ -140,7 +141,7 @@ const AdminDocuments = () => {
               </div>
               <h3 className="text-xl font-bold text-foreground mb-1">No documents found</h3>
               <p className="text-xs text-muted-foreground max-w-xs mx-auto">
-                Try adjusting your search terms to find what you're looking for.
+                Try adjusting your search terms to find what you are looking for.
               </p>
             </div>
           )}
