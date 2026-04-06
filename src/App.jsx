@@ -14,6 +14,23 @@ import UserDashboard from './pages/user/Dashboard';
 import UserDocuments from './pages/user/Documents';
 import DocumentAnalysis from './pages/user/DocumentAnalysis';
 import UserProfile from './pages/user/Profile';
+
+// Super Admin Layout
+import SuperAdminLayout from './layouts/SuperAdminLayout';
+
+// Super Admin Pages
+import SuperAdminDashboard from './pages/superadmin/Dashboard';
+import SuperAdminUsers from './pages/superadmin/Users';
+import SuperAdminDocuments from './pages/superadmin/Documents';
+import SuperAdminKnowledgeBase from './pages/superadmin/KnowledgeBase';
+import SuperAdminChunks from './pages/superadmin/Chunks';
+import SuperAdminExtractionSchema from './pages/superadmin/ExtractionSchema';
+import SuperAdminAgents from './pages/superadmin/Agents';
+import SuperAdminClassifier from './pages/superadmin/Classifier';
+import SuperAdminMapping from './pages/superadmin/Mapping';
+import SuperAdminPrompts from './pages/superadmin/Prompts';
+import SuperAdminDiseases from './pages/superadmin/Diseases';
+
 import AdminDashboard from './pages/admin/Dashboard';
 import AdminUsers from './pages/admin/Users';
 import AdminDocuments from './pages/admin/Documents';
@@ -30,8 +47,11 @@ import Diseases from './pages/admin/Diseases';
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const { isAuthenticated, user } = useSelector((state) => state.auth);
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-  if (allowedRoles && user && !allowedRoles.includes(user.role))
-    return <Navigate to={user.role === 'admin' ? '/admin' : '/user'} replace />;
+  if (allowedRoles && user && !allowedRoles.includes(user.role)) {
+    if (user.role === 'superadmin') return <Navigate to="/superadmin" replace />;
+    if (user.role === 'admin') return <Navigate to="/admin" replace />;
+    return <Navigate to="/user" replace />;
+  }
   return <>{children}</>;
 };
 
@@ -91,6 +111,21 @@ function App() {
               <Route path="documents" element={<UserDocuments />} />
               <Route path="documents/:id/analysis" element={<DocumentAnalysis />} />
               <Route path="profile" element={<UserProfile />} />
+            </Route>
+
+            {/* Super Admin Routes */}
+            <Route path="/superadmin" element={<ProtectedRoute allowedRoles={['superadmin']}><SuperAdminLayout /></ProtectedRoute>}>
+              <Route index element={<SuperAdminDashboard />} />
+              <Route path="users" element={<SuperAdminUsers />} />
+              <Route path="documents" element={<SuperAdminDocuments />} />
+              <Route path="knowledge-base" element={<SuperAdminKnowledgeBase />} />
+              <Route path="chunks" element={<SuperAdminChunks />} />
+              <Route path="extraction-schema" element={<SuperAdminExtractionSchema />} />
+              <Route path="agents" element={<SuperAdminAgents />} />
+              <Route path="classifier" element={<SuperAdminClassifier />} />
+              <Route path="mapping" element={<SuperAdminMapping />} />
+              <Route path="prompts" element={<SuperAdminPrompts />} />
+              <Route path="diseases" element={<SuperAdminDiseases />} />
             </Route>
 
             {/* Admin Routes */}

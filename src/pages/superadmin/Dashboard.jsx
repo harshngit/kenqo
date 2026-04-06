@@ -84,7 +84,7 @@ const SeverityBadge = ({ severity }) => {
   );
 };
 
-const AdminDashboard = () => {
+const SuperAdminDashboard = () => {
   const { user } = useSelector((state) => state.auth);
   const { documents } = useUserStore();
   const [selectedDisease, setSelectedDisease] = useState('Lymphedema');
@@ -104,7 +104,7 @@ const AdminDashboard = () => {
       trendNeg: false,
       iconColor: 'text-primary',
       iconBg: 'bg-primary/10',
-      to: '/admin/documents',
+      to: '/superadmin/documents',
     },
     {
       title: 'TOTAL USERS',
@@ -114,7 +114,7 @@ const AdminDashboard = () => {
       trendNeg: false,
       iconColor: 'text-blue-500',
       iconBg: 'bg-blue-50 dark:bg-blue-500/10',
-      to: '/admin/users',
+      to: '/superadmin/users',
     },
     {
       title: 'TOTAL RULES',
@@ -124,7 +124,7 @@ const AdminDashboard = () => {
       trendNeg: false,
       iconColor: 'text-primary',
       iconBg: 'bg-primary/10',
-      to: '/admin/knowledge-base',
+      to: '/superadmin/knowledge-base',
     },
     {
       title: 'TOTAL CHUNKS',
@@ -134,7 +134,7 @@ const AdminDashboard = () => {
       trendNeg: true,
       iconColor: 'text-amber-500',
       iconBg: 'bg-amber-50 dark:bg-amber-500/10',
-      to: '/admin/chunks',
+      to: '/superadmin/chunks',
     },
   ];
 
@@ -152,9 +152,9 @@ const AdminDashboard = () => {
               </span>
               System Live
             </div>
-            <h1 className="text-3xl font-extrabold tracking-tight leading-tight">Admin Dashboard</h1>
+            <h1 className="text-3xl font-extrabold tracking-tight leading-tight">Superadmin Dashboard</h1>
             <p className="text-primary-foreground/80 text-sm max-w-md leading-relaxed">
-              Welcome back, <span className="font-bold text-white">Admin</span>! System performance is optimal today with {documents.filter(d => d.status === 'processing').length || 1} active tasks.
+              Welcome back, <span className="font-bold text-white">Superadmin</span>! System performance is optimal today with {documents.filter(d => d.status === 'processing').length || 1} active tasks.
             </p>
           </div>
 
@@ -261,7 +261,7 @@ const AdminDashboard = () => {
         <div className="bg-card border border-border/50 rounded-xl overflow-hidden shadow-sm">
           <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
             <h3 className="text-sm font-bold text-foreground">Rules — pending review</h3>
-            <Link to="/admin/knowledge-base" className="text-xs text-primary font-semibold hover:underline flex items-center gap-1">
+            <Link to="/superadmin/knowledge-base" className="text-xs text-primary font-semibold hover:underline flex items-center gap-1">
               View all <ArrowUpRight className="w-3 h-3" />
             </Link>
           </div>
@@ -283,7 +283,7 @@ const AdminDashboard = () => {
         <div className="bg-card border border-border/50 rounded-xl overflow-hidden shadow-sm">
           <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
             <h3 className="text-sm font-bold text-foreground">Policy documents</h3>
-            <Link to="/admin/documents" className="text-xs text-primary font-semibold hover:underline flex items-center gap-1">
+            <Link to="/superadmin/documents" className="text-xs text-primary font-semibold hover:underline flex items-center gap-1">
               Upload <ArrowUpRight className="w-3 h-3" />
             </Link>
           </div>
@@ -315,7 +315,7 @@ const AdminDashboard = () => {
         <div className="bg-card border border-border/50 rounded-xl overflow-hidden shadow-sm">
           <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
             <h3 className="text-sm font-bold text-foreground">Extraction agents</h3>
-            <Link to="/admin/agents" className="text-xs text-primary font-semibold hover:underline flex items-center gap-1">
+            <Link to="/superadmin/agents" className="text-xs text-primary font-semibold hover:underline flex items-center gap-1">
               Manage <ArrowUpRight className="w-3 h-3" />
             </Link>
           </div>
@@ -343,7 +343,7 @@ const AdminDashboard = () => {
         <div className="bg-card border border-border/50 rounded-xl overflow-hidden shadow-sm">
           <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
             <h3 className="text-sm font-bold text-foreground">Extraction schema</h3>
-            <Link to="/admin/extraction-schema" className="text-xs text-primary font-semibold hover:underline flex items-center gap-1">
+            <Link to="/superadmin/extraction-schema" className="text-xs text-primary font-semibold hover:underline flex items-center gap-1">
               Edit <ArrowUpRight className="w-3 h-3" />
             </Link>
           </div>
@@ -387,4 +387,4 @@ const AdminDashboard = () => {
   );
 };
 
-export default AdminDashboard;
+export default SuperAdminDashboard;

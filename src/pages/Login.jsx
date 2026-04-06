@@ -46,7 +46,9 @@ const Login = () => {
       const role = user.role || 'admin';
       setIsRedirecting(true);
       setTimeout(() => {
-        navigate(role === 'admin' ? '/admin' : '/user');
+        if (role === 'superadmin') navigate('/superadmin');
+        else if (role === 'admin') navigate('/admin');
+        else navigate('/user');
       }, 1500);
     }
   }, [isAuthenticated, user, navigate, isRedirecting, isInitialLoading]);
@@ -67,7 +69,9 @@ const Login = () => {
       toast.success(`Welcome back, ${u?.full_name || u?.name || email}!`);
       setIsRedirecting(true);
       setTimeout(() => {
-        navigate(role === 'admin' ? '/admin' : '/user');
+        if (role === 'superadmin') navigate('/superadmin');
+        else if (role === 'admin') navigate('/admin');
+        else navigate('/user');
       }, 2000);
     }
   };

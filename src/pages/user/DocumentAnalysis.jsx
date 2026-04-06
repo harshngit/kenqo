@@ -65,7 +65,7 @@ const DocumentAnalysis = () => {
     const confidencePercent = Math.round(field.confidence * 100);
     
     return (
-      <div className="group p-4 bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 hover:border-teal-200 dark:hover:border-teal-500/30 transition-all">
+      <div className="group p-4 bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 hover:border-primary/20 dark:hover:border-primary/30 transition-all">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">{label}</p>
@@ -129,8 +129,8 @@ const DocumentAnalysis = () => {
         <Card className="border-0 shadow-lg bg-gray-50/50 dark:bg-slate-800/50">
           <CardHeader className="pb-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-teal-100 dark:bg-teal-500/20 rounded-xl flex items-center justify-center">
-                <Icon className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+              <div className="w-10 h-10 bg-primary/10 dark:bg-primary/20 rounded-xl flex items-center justify-center">
+                <Icon className="w-5 h-5 text-primary" />
               </div>
               <div>
                 <CardTitle className="text-lg text-gray-800 dark:text-white">{title}</CardTitle>
