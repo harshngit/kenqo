@@ -191,7 +191,7 @@ function FieldCard({ field, fieldName, section, sectionActive, onToggle, onEdit,
               className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-primary/10 transition-colors text-muted-foreground hover:text-primary">
               <Edit2 className="w-4 h-4" />
             </button>
-            <button onClick={() => onDelete(section, fieldName)} title="Delete"
+            <button onClick={() => openDeleteDialog('field', { section, fieldName })} title="Delete"
               className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-red-500/10 transition-colors text-muted-foreground hover:text-red-500">
               <Trash2 className="w-4 h-4" />
             </button>
@@ -237,6 +237,34 @@ function FieldCard({ field, fieldName, section, sectionActive, onToggle, onEdit,
   );
 }
 
+/* ─── DELETE CONFIRM DIALOG ─── */
+const DeleteConfirmDialog = ({ open, title, description, onConfirm, onCancel, loading }) => {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-card border-2 border-border/40 rounded-[2.5rem] p-8 w-full max-w-md shadow-2xl space-y-6 animate-in zoom-in-95 duration-200">
+        <div className="flex flex-col items-center text-center gap-4">
+          <div className="w-20 h-20 bg-red-500/10 rounded-[2.5rem] flex items-center justify-center shadow-inner">
+            <Trash2 className="w-10 h-10 text-red-500" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-black tracking-tight">{title}</h2>
+            <p className="text-sm text-muted-foreground font-medium leading-relaxed">{description}</p>
+          </div>
+        </div>
+        <div className="flex gap-3">
+          <Button variant="outline" onClick={onCancel} disabled={loading} className="flex-1 h-12 rounded-2xl font-black border-border/60">
+            Cancel
+          </Button>
+          <Button onClick={onConfirm} disabled={loading} className="flex-1 h-12 rounded-2xl font-black bg-red-500 hover:bg-red-600 text-white shadow-xl shadow-red-500/20 transition-all active:scale-95">
+            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Delete'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 const SuperAdminExtractionSchema = () => {
   const authUser = useSelector((s) => s.auth?.user);
@@ -254,7 +282,7 @@ const SuperAdminExtractionSchema = () => {
   const [isSavingField, setIsSavingField] = useState(false);
   const [fieldSaveError, setFieldSaveError] = useState(null);
 
-  const [deleteDialog, setDeleteDialog] = useState({ open: false, section: '', fieldName: '' });
+  const [deleteConfirm, setDeleteConfirm] = useState({ open: false, type: '', data: {} });
   const [isDeleting, setIsDeleting] = useState(false);
 
   // New Dialogs for DocTypes and Routing
@@ -454,8 +482,9 @@ const SuperAdminExtractionSchema = () => {
     finally { setIsSavingDocType(false); }
   };
 
-  const handleDocTypeDelete = async (name) => {
-    if (!confirm(`Are you sure you want to permanently remove "${name}"?`)) return;
+  const handleDocTypeDelete = async () => {
+    const { name } = deleteConfirm.data;
+    setIsDeleting(true);
     try {
       const res = await fetch(`${BASE_URL}/admin/config/${DISEASE}/schema/document-types`, {
         method: 'DELETE',
@@ -465,8 +494,10 @@ const SuperAdminExtractionSchema = () => {
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data?.detail || 'Failed to delete');
       fetchDocTypes();
+      setDeleteConfirm({ open: false, type: '', data: {} });
       showToast('Document type deleted');
     } catch (e) { showToast(e.message, 'error'); }
+    finally { setIsDeleting(false); }
   };
 
   const handleDocTypeToggle = async (name, active) => {
@@ -516,11 +547,9 @@ const SuperAdminExtractionSchema = () => {
     } catch (e) { showToast(e.message, 'error'); }
   };
 
-  const openDeleteDialog = (section, fieldName) => setDeleteDialog({ open: true, section, fieldName });
-
-  const handleDelete = async () => {
+  const handleFieldDelete = async () => {
     setIsDeleting(true);
-    const { section, fieldName } = deleteDialog;
+    const { section, fieldName } = deleteConfirm.data;
     try {
       const res = await fetch(`${BASE_URL}/admin/config/${DISEASE}/schema/field`, {
         method: 'DELETE',
@@ -535,10 +564,22 @@ const SuperAdminExtractionSchema = () => {
         delete sec[fieldName];
         return { ...prev, extraction_schema: { ...es, [section]: sec } };
       });
-      setDeleteDialog({ open: false, section: '', fieldName: '' });
+      setDeleteConfirm({ open: false, type: '', data: {} });
       showToast('Field deleted');
     } catch (e) { showToast(e.message, 'error'); }
     finally { setIsDeleting(false); }
+  };
+
+  const openDeleteDialog = (type, data) => setDeleteConfirm({ open: true, type, data });
+
+  const handleConfirmDelete = () => {
+    if (deleteConfirm.type === 'field') handleFieldDelete();
+    if (deleteConfirm.type === 'doctype') handleDocTypeDelete();
+    if (deleteConfirm.type === 'routing') {
+      const { product, sectionName } = deleteConfirm.data;
+      handleRoutingSectionToggle(product, sectionName, false);
+      setDeleteConfirm({ open: false, type: '', data: {} });
+    }
   };
 
   const extractionSchema = schema?.extraction_schema || {};
@@ -565,7 +606,24 @@ const SuperAdminExtractionSchema = () => {
   }
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 relative">
+    <div className="space-y-8 animate-in fade-in duration-500 relative pb-12">
+      <DeleteConfirmDialog
+        open={deleteConfirm.open}
+        title={
+          deleteConfirm.type === 'field' ? 'Delete Field' :
+          deleteConfirm.type === 'doctype' ? 'Delete Document Type' :
+          'Remove Routing Section'
+        }
+        description={
+          deleteConfirm.type === 'field' ? `Are you sure you want to delete the field "${deleteConfirm.data.fieldName}"? This cannot be undone.` :
+          deleteConfirm.type === 'doctype' ? `Are you sure you want to permanently remove the document type "${deleteConfirm.data.name}"?` :
+          `Remove "${deleteConfirm.data.sectionName}" from "${deleteConfirm.data.product}" routing?`
+        }
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeleteConfirm({ open: false, type: '', data: {} })}
+        loading={isDeleting}
+      />
+
       {/* Subsequent Loading Overlay */}
       {isFetching && !isInitialLoading && (
         <div className="fixed inset-0 z-[100] bg-background/40 backdrop-blur-[1px] flex items-center justify-center animate-in fade-in duration-300">
@@ -855,11 +913,7 @@ const SuperAdminExtractionSchema = () => {
                                   <Edit2 className="w-3.5 h-3.5" />
                                 </button>
                                 <button
-                                  onClick={() => {
-                                    if (confirm(`Remove ${name} from ${product} routing?`)) {
-                                      handleRoutingSectionToggle(product, name, false);
-                                    }
-                                  }}
+                                  onClick={() => openDeleteDialog('routing', { product, sectionName: name })}
                                   className="p-1 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-colors"
                                   title="Delete"
                                 >
@@ -906,7 +960,7 @@ const SuperAdminExtractionSchema = () => {
                             {dt.active !== false ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
                           </button>
                           <button
-                            onClick={() => handleDocTypeDelete(dt.name || dt)}
+                            onClick={() => openDeleteDialog('doctype', { name: dt.name || dt })}
                             className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-colors"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1226,30 +1280,7 @@ const SuperAdminExtractionSchema = () => {
       </Dialog>
 
       {/* ── Delete Dialog ── */}
-      <Dialog open={deleteDialog.open} onOpenChange={(v) => !v && setDeleteDialog({ open: false, section: '', fieldName: '' })}>
-        <DialogContent className="sm:max-w-sm rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="font-black flex items-center gap-2 text-destructive">
-              <Trash2 className="w-5 h-5" />Delete Field
-            </DialogTitle>
-          </DialogHeader>
-          <div className="py-2">
-            <p className="text-sm text-muted-foreground">
-              Are you sure you want to delete{' '}
-              <span className="font-bold text-foreground">{toLabel(deleteDialog.fieldName)}</span>{' '}
-              from <span className="font-bold">{toLabel(deleteDialog.section)}</span>? This cannot be undone.
-            </p>
-          </div>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setDeleteDialog({ open: false, section: '', fieldName: '' })}
-              disabled={isDeleting} className="rounded-xl font-bold">Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={isDeleting} className="rounded-xl font-bold gap-2">
-              {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-              {isDeleting ? 'Deleting…' : 'Delete Field'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Handled by DeleteConfirmDialog component at the top of return */}
 
       {/* ── Document Type Dialog ── */}
       <Dialog open={docTypeDialog.open} onOpenChange={(v) => !v && setDocTypeDialog((p) => ({ ...p, open: false }))}>
