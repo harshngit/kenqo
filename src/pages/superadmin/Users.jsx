@@ -161,86 +161,93 @@ const SuperAdminUsers = () => {
   }
 
   return (
-    <div className="h-[calc(100vh-5.5rem)] lg:h-[calc(100vh-3rem)] flex flex-col space-y-6 animate-in fade-in duration-700 overflow-hidden">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 flex-shrink-0">
-        <div className="space-y-2">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-[10px] font-bold uppercase tracking-widest">
-            <Users className="w-3.5 h-3.5" />
-            User Management
+    <div className="space-y-8 animate-in fade-in duration-500 pb-12">
+      {/* ── Header ── */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div className="space-y-3">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-[10px] font-black uppercase tracking-[0.2em] shadow-sm">
+            <Users className="w-3.5 h-3.5" /> User Management
           </div>
-          <h1 className="text-2xl font-black tracking-tight">System Users</h1>
-          <p className="text-muted-foreground text-sm">Manage roles and monitor all registered platform users</p>
+          <h1 className="text-3xl font-black tracking-tight">
+            System Users
+          </h1>
+          <p className="text-muted-foreground text-sm font-medium">
+            Manage roles and monitor all registered platform users
+          </p>
         </div>
-        <Button
-          variant="outline"
-          onClick={fetchUsers}
-          disabled={isLoading}
-          className="h-10 px-5 rounded-xl font-bold text-sm gap-2 self-start md:self-auto"
-        >
-          <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-3 self-start md:self-auto">
+          <Button
+            variant="outline"
+            onClick={fetchUsers}
+            disabled={isLoading}
+            className="h-11 px-5 rounded-2xl font-black text-sm gap-2 border-border/60 hover:bg-muted transition-all active:scale-95 shadow-sm"
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh Data
+          </Button>
+        </div>
       </div>
 
       {/* Search */}
-      <Card className="border-0 shadow-lg shadow-black/5 dark:shadow-white/5 rounded-2xl bg-card/50 backdrop-blur-sm border-white/20 dark:border-white/5 overflow-hidden flex-shrink-0">
-        <CardContent className="p-4">
-          <div className="relative group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
-            <Input
-              placeholder="Search users by name, email, or role..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-11 h-12 bg-background/50 border-border/50 focus:border-primary/50 focus:ring-primary/20 rounded-xl text-base transition-all"
-            />
-          </div>
-        </CardContent>
-      </Card>
+      <div className="relative group max-w-2xl">
+        <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground group-focus-within:text-primary transition-all duration-300" />
+        <Input
+          placeholder="Search users by name, email, or role..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-14 h-14 bg-card border-2 border-border/40 focus:border-primary/40 rounded-[1.25rem] transition-all shadow-sm focus:shadow-md text-sm font-medium placeholder:text-muted-foreground/40"
+        />
+      </div>
 
       {/* Users Table */}
-      <Card className="flex-1 min-h-0 border-0 shadow-lg shadow-black/5 dark:shadow-white/5 rounded-2xl overflow-hidden bg-card/50 backdrop-blur-sm border-white/20 dark:border-white/5 flex flex-col">
-        <CardHeader className="p-6 border-b border-border/50 flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg font-bold tracking-tight">
-              All Users{' '}
-              <span className="text-primary ml-2 opacity-50 font-black">
-                {isLoading ? '...' : filteredUsers.length}
-              </span>
-            </CardTitle>
-          </div>
+      <Card className="border-2 border-border/40 rounded-[2.5rem] shadow-lg overflow-hidden transition-all duration-500 bg-card">
+        <CardHeader className="px-8 py-6 border-b-2 border-border/10 bg-muted/5">
+          <CardTitle className="text-lg font-black flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-2xl bg-primary/10 text-primary">
+                <Users className="w-5 h-5" />
+              </div>
+              <span>System User Directory</span>
+            </div>
+            <span className="text-xs font-black px-4 py-1.5 rounded-full bg-primary/10 text-primary shadow-inner">
+              {isLoading ? '...' : filteredUsers.length} Users
+            </span>
+          </CardTitle>
         </CardHeader>
-        <CardContent className="p-0 flex-1 overflow-y-auto scrollbar-none relative">
+        <CardContent className="p-0 relative">
           {/* Refresh/Subsequent Loading Overlay */}
           {isLoading && !isInitialLoading && (
             <div className="absolute inset-0 z-10 bg-background/40 backdrop-blur-[1px] flex items-center justify-center animate-in fade-in duration-300">
-              <div className="bg-card border border-border/50 shadow-2xl rounded-2xl p-6 flex flex-col items-center gap-3">
-                <Loader2 className="w-8 h-8 text-primary animate-spin" />
-                <p className="text-sm font-bold tracking-tight">Updating users list...</p>
+              <div className="bg-card border-2 border-border/50 shadow-2xl rounded-3xl p-8 flex flex-col items-center gap-4">
+                <Loader2 className="w-10 h-10 text-primary animate-spin" />
+                <p className="text-sm font-black tracking-tight">Updating user records...</p>
               </div>
             </div>
           )}
 
-          {/* Loading State (Only for actual empty initial load) */}
+          {/* Loading State */}
           {isLoading && isInitialLoading && (
-            <div className="py-24 flex flex-col items-center gap-4">
-              <Loader2 className="w-8 h-8 text-primary animate-spin" />
-              <p className="text-sm text-muted-foreground font-medium">Loading users...</p>
+            <div className="py-32 flex flex-col items-center gap-6 animate-pulse">
+              <div className="w-16 h-16 bg-primary/10 rounded-3xl flex items-center justify-center relative">
+                <Users className="w-8 h-8 text-primary" />
+                <div className="absolute inset-0 border-4 border-primary border-t-transparent rounded-3xl animate-spin" />
+              </div>
+              <p className="font-black text-lg">Loading Directory</p>
             </div>
           )}
 
           {/* Error State */}
           {!isLoading && error && (
-            <div className="py-16 flex flex-col items-center gap-4 px-6">
-              <div className="w-14 h-14 bg-destructive/10 rounded-full flex items-center justify-center">
-                <AlertCircle className="w-7 h-7 text-destructive" />
+            <div className="py-24 flex flex-col items-center gap-6 animate-in zoom-in-95">
+              <div className="w-20 h-20 bg-destructive/10 rounded-[2.5rem] flex items-center justify-center shadow-inner">
+                <AlertCircle className="w-10 h-10 text-destructive" />
               </div>
-              <div className="text-center space-y-1">
-                <p className="font-bold text-sm text-destructive">Failed to load users</p>
-                <p className="text-xs text-muted-foreground max-w-xs">{error}</p>
+              <div className="text-center space-y-2">
+                <p className="font-black text-xl text-destructive">Connection Failed</p>
+                <p className="text-sm text-muted-foreground max-w-xs mx-auto font-medium">{error}</p>
               </div>
-              <Button size="sm" onClick={fetchUsers} className="rounded-xl px-4 h-9 text-sm font-bold">
-                Try Again
+              <Button onClick={fetchUsers} className="rounded-2xl px-8 h-12 font-black bg-destructive hover:bg-destructive/90 shadow-xl shadow-destructive/20 transition-all active:scale-95">
+                Retry Connection
               </Button>
             </div>
           )}
@@ -250,13 +257,13 @@ const SuperAdminUsers = () => {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="hover:bg-transparent border-border/50">
-                    <TableHead className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">User</TableHead>
-                    <TableHead className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Email</TableHead>
-                    <TableHead className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Role</TableHead>
-                    <TableHead className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Status</TableHead>
-                    <TableHead className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Last Login</TableHead>
-                    <TableHead className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground text-right">Actions</TableHead>
+                  <TableRow className="hover:bg-transparent border-b-2 border-border/10">
+                    <TableHead className="px-8 py-5 text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">User Profile</TableHead>
+                    <TableHead className="px-8 py-5 text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Contact Email</TableHead>
+                    <TableHead className="px-8 py-5 text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Access Role</TableHead>
+                    <TableHead className="px-8 py-5 text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Activity</TableHead>
+                    <TableHead className="px-8 py-5 text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Last Access</TableHead>
+                    <TableHead className="px-8 py-5 text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -264,52 +271,53 @@ const SuperAdminUsers = () => {
                     const rc = roleConfig[user.role] || roleConfig.user;
                     const RoleIcon = rc.icon;
                     return (
-                      <TableRow key={user.user_id} className="group hover:bg-primary/[0.02] border-border/40 transition-colors">
+                      <TableRow key={user.user_id} className="group hover:bg-primary/[0.02] border-b border-border/10 transition-colors">
                         {/* User */}
-                        <TableCell className="px-6 py-5">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 group-hover:rotate-3">
-                              <span className="text-primary font-black text-sm">
+                        <TableCell className="px-8 py-6">
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-105 shadow-inner relative overflow-hidden">
+                              <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+                              <span className="text-primary font-black text-base">
                                 {(user.full_name || user.email || '?')[0].toUpperCase()}
                               </span>
                             </div>
                             <div>
-                              <p className="font-bold text-sm group-hover:text-primary transition-colors">
+                              <p className="font-black text-base tracking-tight group-hover:text-primary transition-colors">
                                 {user.full_name || '—'}
                               </p>
-                              <p className="text-[11px] text-muted-foreground font-mono">{user.user_id?.slice(0, 8)}…</p>
+                              <p className="text-[11px] text-muted-foreground/60 font-mono font-medium">ID: {user.user_id?.slice(0, 8)}…</p>
                             </div>
                           </div>
                         </TableCell>
 
                         {/* Email */}
-                        <TableCell className="px-6 py-5">
-                          <p className="text-sm text-foreground/80">{user.email}</p>
+                        <TableCell className="px-8 py-6">
+                          <p className="text-sm font-medium text-foreground/80">{user.email}</p>
                         </TableCell>
 
                         {/* Role */}
-                        <TableCell className="px-6 py-5">
-                          <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${rc.className}`}>
-                            <RoleIcon className="w-3 h-3" />
+                        <TableCell className="px-8 py-6">
+                          <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 shadow-sm ${rc.className}`}>
+                            <RoleIcon className="w-3.5 h-3.5" />
                             {rc.label}
                           </div>
                         </TableCell>
 
                         {/* Status */}
-                        <TableCell className="px-6 py-5">
-                          <div className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${
+                        <TableCell className="px-8 py-6">
+                          <div className={`inline-flex items-center gap-2.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-sm ${
                             user.is_active
-                              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                              : 'bg-muted text-muted-foreground'
+                              ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
+                              : 'bg-muted text-muted-foreground border-border/50'
                           }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${user.is_active ? 'bg-emerald-500 animate-pulse' : 'bg-muted-foreground'}`} />
+                            <span className={`w-2 h-2 rounded-full ${user.is_active ? 'bg-emerald-500 animate-pulse' : 'bg-muted-foreground'}`} />
                             {user.is_active ? 'Active' : 'Inactive'}
                           </div>
                         </TableCell>
 
                         {/* Last Login */}
-                        <TableCell className="px-6 py-5">
-                          <p className="text-xs text-muted-foreground">
+                        <TableCell className="px-8 py-6">
+                          <p className="text-xs font-bold text-muted-foreground/70">
                             {user.last_login
                               ? new Date(user.last_login).toLocaleDateString('en-US', {
                                   month: 'short',
@@ -321,19 +329,19 @@ const SuperAdminUsers = () => {
                         </TableCell>
 
                         {/* Actions */}
-                        <TableCell className="px-6 py-5 text-right">
+                        <TableCell className="px-8 py-6 text-right">
                           {canChangeRole(user) ? (
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => openRoleDialog(user)}
-                              className="rounded-lg h-8 px-3 text-xs font-bold gap-1.5 hover:bg-violet-500/10 hover:text-violet-600 hover:border-violet-500/30 transition-colors"
+                              className="h-10 px-4 text-xs rounded-xl font-black gap-2 border-primary/20 text-primary hover:bg-primary hover:text-white transition-all active:scale-95 shadow-sm"
                             >
-                              <UserCog className="w-3.5 h-3.5" />
-                              Manage Role
+                              <UserCog className="w-4 h-4" />
+                              Manage Access
                             </Button>
                           ) : (
-                            <span className="text-[11px] text-muted-foreground/40 italic">No action</span>
+                            <span className="text-[11px] font-black uppercase tracking-widest text-muted-foreground/30 italic">Restricted</span>
                           )}
                         </TableCell>
                       </TableRow>
@@ -346,14 +354,19 @@ const SuperAdminUsers = () => {
 
           {/* Empty State */}
           {!isLoading && !error && filteredUsers.length === 0 && (
-            <div className="py-20 text-center">
-              <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-5">
-                <Search className="w-8 h-8 text-muted-foreground/40" />
+            <div className="py-24 flex flex-col items-center gap-6 animate-in zoom-in-95 bg-muted/5">
+              <div className="w-20 h-20 bg-muted rounded-[2.5rem] flex items-center justify-center shadow-inner opacity-20">
+                <Search className="w-10 h-10" />
               </div>
-              <h3 className="text-xl font-bold text-foreground mb-1">No users found</h3>
-              <p className="text-xs text-muted-foreground max-w-xs mx-auto">
-                {searchQuery ? 'Try adjusting your search terms.' : 'No users are registered on the platform yet.'}
-              </p>
+              <div className="text-center space-y-2">
+                <p className="font-black text-xl text-muted-foreground">No users found</p>
+                <p className="text-sm text-muted-foreground/60 font-medium max-w-xs mx-auto">
+                  {searchQuery ? 'Try adjusting your search terms or filters.' : 'The user directory is currently empty.'}
+                </p>
+              </div>
+              <Button onClick={() => setSearchQuery('')} variant="outline" className="rounded-2xl px-8 h-12 font-black border-border/60 transition-all active:scale-95">
+                Clear Search
+              </Button>
             </div>
           )}
         </CardContent>
@@ -361,73 +374,96 @@ const SuperAdminUsers = () => {
 
       {/* Manage Role Dialog */}
       <Dialog open={roleDialog.open} onOpenChange={(v) => !v && closeRoleDialog()}>
-        <DialogContent className="sm:max-w-md rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-black flex items-center gap-2">
-              <UserCog className="w-5 h-5 text-violet-500" />
-              Manage Role
-            </DialogTitle>
-          </DialogHeader>
+        <DialogContent className="sm:max-w-xl rounded-3xl p-0 overflow-hidden flex flex-col max-h-[90vh] border-none shadow-2xl">
+          {/* Header */}
+          <div className="px-8 pt-8 pb-6 border-b border-border/40 shrink-0 relative overflow-hidden"
+            style={{ background: 'linear-gradient(135deg, hsl(var(--primary)/0.08) 0%, transparent 100%)' }}>
+            <div className="absolute top-0 right-0 p-8 opacity-5">
+              <UserCog className="w-24 h-24" />
+            </div>
+            <DialogHeader className="relative z-10">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-primary/15 text-primary flex items-center justify-center shadow-inner shrink-0">
+                  <UserCog className="w-6 h-6" />
+                </div>
+                <div>
+                  <DialogTitle className="font-black text-xl tracking-tight">
+                    Manage Access — {roleDialog.user?.full_name || 'User'}
+                  </DialogTitle>
+                  <p className="text-sm text-muted-foreground font-medium mt-0.5">
+                    Modify platform permissions and access level.
+                  </p>
+                </div>
+              </div>
+            </DialogHeader>
+          </div>
 
           {roleDialog.user && (
-            <div className="space-y-4 py-2">
-              <div className="bg-muted/40 rounded-xl p-4 space-y-1">
-                <p className="font-bold text-sm">{roleDialog.user.full_name || roleDialog.user.email}</p>
-                <p className="text-xs text-muted-foreground">{roleDialog.user.email}</p>
-                <div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20">
-                  <ShieldCheck className="w-3 h-3" />
-                  Superadmin
+            <div className="px-8 py-6 flex-1 overflow-y-auto space-y-6">
+              <div className="bg-muted/30 border-2 border-border/40 rounded-[1.5rem] p-6 space-y-2 shadow-inner">
+                <div className="flex items-center justify-between">
+                  <p className="font-black text-lg tracking-tight">{roleDialog.user.full_name || 'N/A'}</p>
+                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 bg-violet-500/10 text-violet-600 border-violet-500/20 shadow-sm">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    Superadmin
+                  </div>
                 </div>
+                <p className="text-sm font-bold text-muted-foreground/70">{roleDialog.user.email}</p>
               </div>
 
-              <div className="space-y-1.5">
-                <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Change role to</p>
-                <div className="flex items-center gap-3 p-3 border border-primary/30 bg-primary/5 rounded-xl">
-                  <div className="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center">
-                    <ShieldAlert className="w-4 h-4 text-primary" />
+              <div className="space-y-4">
+                <label className="text-[11px] font-black text-muted-foreground uppercase tracking-[0.2em] ml-1">
+                  Change Role To
+                </label>
+                <div className="group flex items-center gap-4 p-5 border-2 border-primary/40 bg-primary/5 rounded-[1.5rem] shadow-sm transition-all hover:shadow-md">
+                  <div className="w-12 h-12 bg-primary/15 rounded-2xl flex items-center justify-center shadow-inner shrink-0">
+                    <ShieldAlert className="w-6 h-6 text-primary" />
                   </div>
                   <div>
-                    <p className="font-bold text-sm">Admin</p>
-                    <p className="text-[11px] text-muted-foreground">Can manage users and platform settings</p>
+                    <p className="font-black text-base tracking-tight text-primary">Admin Access</p>
+                    <p className="text-xs font-medium text-muted-foreground/80 leading-relaxed mt-0.5">
+                      Grant permissions to manage users, configurations, and system settings.
+                    </p>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
-                ⚠️ This action will demote <strong>{roleDialog.user.full_name}</strong> from Superadmin to Admin. This cannot be reversed from this panel.
+              <div className="flex items-start gap-4 p-5 bg-amber-500/5 border-2 border-amber-500/20 rounded-[1.5rem]">
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="text-xs font-black uppercase tracking-wider text-amber-700">Warning: Demotion</p>
+                  <p className="text-xs font-bold text-amber-700/70 leading-relaxed">
+                    This action will demote <strong>{roleDialog.user.full_name}</strong> to Admin. This cannot be reversed from this dashboard.
+                  </p>
+                </div>
               </div>
 
               {roleError && (
-                <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-3 text-xs text-destructive flex items-center gap-2">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <div className="flex items-center gap-3 p-4 bg-destructive/10 border border-destructive/20 rounded-2xl text-xs text-destructive font-bold animate-in shake">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
                   {roleError}
                 </div>
               )}
             </div>
           )}
 
-          <DialogFooter className="gap-2 sm:gap-2">
-            <Button variant="outline" onClick={closeRoleDialog} disabled={isUpdatingRole} className="rounded-xl font-bold">
+          <div className="px-8 py-6 border-t border-border/40 bg-muted/10 flex justify-between items-center shrink-0">
+            <button
+              onClick={closeRoleDialog}
+              disabled={isUpdatingRole}
+              className="text-sm font-black text-muted-foreground hover:text-foreground transition-colors px-2"
+            >
               Cancel
-            </Button>
+            </button>
             <Button
               onClick={handleRoleChange}
               disabled={isUpdatingRole}
-              className="rounded-xl font-bold bg-violet-600 hover:bg-violet-700 text-white gap-2"
+              className="rounded-2xl font-black text-sm h-12 px-8 bg-violet-600 hover:bg-violet-700 text-white shadow-xl shadow-violet-500/25 gap-2 transition-all active:scale-95"
             >
-              {isUpdatingRole ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  Updating...
-                </>
-              ) : (
-                <>
-                  <UserCog className="w-3.5 h-3.5" />
-                  Confirm Role Change
-                </>
-              )}
+              {isUpdatingRole ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCog className="w-4 h-4" />}
+              {isUpdatingRole ? 'Updating Access…' : 'Confirm Role Change'}
             </Button>
-          </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

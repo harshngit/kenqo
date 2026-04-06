@@ -158,72 +158,79 @@ function FieldCard({ field, fieldName, section, sectionActive, onToggle, onEdit,
   };
 
   return (
-    <div className={`group relative rounded-xl border p-4 transition-all duration-200 ${
+    <div className={`group relative rounded-[1.5rem] border-2 p-5 transition-all duration-300 ${
       active && sectionActive
-        ? 'bg-card border-border/50 hover:border-primary/30 hover:shadow-md hover:shadow-black/5'
-        : 'bg-muted/30 border-border/30 opacity-55'
+        ? 'bg-card border-border/40 hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5'
+        : 'bg-muted/10 border-border/20 opacity-60 grayscale-[0.5]'
     }`}>
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-          {/* Human readable name */}
-          <span className="font-bold text-sm text-foreground">{toLabel(fieldName)}</span>
+      <div className="flex items-start justify-between gap-4 mb-4">
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          <span className="font-black text-base text-foreground tracking-tight">{toLabel(fieldName)}</span>
           <TypeBadge value={field.type} />
           <CritBadge value={field.criticality} />
           {field.required && (
-            <span className="text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+            <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 shadow-sm">
               Required
             </span>
           )}
           {field.cross_doc_check && (
-            <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-500 border border-violet-500/20">
-              <Link2 className="w-2.5 h-2.5" />Cross-doc
-            </span>
-          )}
-          {!active && (
-            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border">
-              Inactive
+            <span className="inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-500 border border-violet-500/20 shadow-sm">
+              <Link2 className="w-3 h-3" />Cross-doc
             </span>
           )}
         </div>
         {sectionActive && (
-          <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1.5 shrink-0 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-2 group-hover:translate-x-0">
             <button onClick={handleToggle} disabled={toggling} title={active ? 'Deactivate' : 'Activate'}
-              className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
-              {toggling ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                : active ? <ToggleRight className="w-3.5 h-3.5 text-emerald-500" />
-                : <ToggleLeft className="w-3.5 h-3.5" />}
+              className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
+              {toggling ? <Loader2 className="w-4 h-4 animate-spin" />
+                : active ? <ToggleRight className="w-5 h-5 text-emerald-500" />
+                : <ToggleLeft className="w-5 h-5" />}
             </button>
             <button onClick={() => onEdit(section, fieldName, field)} title="Edit"
-              className="p-1.5 rounded-lg hover:bg-primary/10 transition-colors text-muted-foreground hover:text-primary">
-              <Edit2 className="w-3.5 h-3.5" />
+              className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-primary/10 transition-colors text-muted-foreground hover:text-primary">
+              <Edit2 className="w-4 h-4" />
             </button>
             <button onClick={() => onDelete(section, fieldName)} title="Delete"
-              className="p-1.5 rounded-lg hover:bg-red-500/10 transition-colors text-muted-foreground hover:text-red-500">
-              <Trash2 className="w-3.5 h-3.5" />
+              className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-red-500/10 transition-colors text-muted-foreground hover:text-red-500">
+              <Trash2 className="w-4 h-4" />
             </button>
           </div>
         )}
       </div>
 
-      <div className="space-y-1.5 text-[11px] text-muted-foreground">
+      <div className="space-y-2 text-[11px] text-muted-foreground/80 font-medium leading-relaxed">
         {field.validation && (
-          <p className="flex gap-1.5"><Shield className="w-3 h-3 mt-0.5 shrink-0 text-primary/50" /><span>{field.validation}</span></p>
+          <div className="flex gap-2.5 items-start p-2.5 bg-muted/30 rounded-xl border border-border/40">
+            <Shield className="w-3.5 h-3.5 mt-0.5 shrink-0 text-primary/50" />
+            <span>{field.validation}</span>
+          </div>
         )}
         {field.criticality_rationale && (
-          <p className="flex gap-1.5"><Info className="w-3 h-3 mt-0.5 shrink-0 text-amber-500/60" /><span>{field.criticality_rationale}</span></p>
+          <div className="flex gap-2.5 items-start p-2.5 bg-amber-500/5 rounded-xl border border-amber-500/10">
+            <Info className="w-3.5 h-3.5 mt-0.5 shrink-0 text-amber-500/60" />
+            <span className="text-amber-700/70">{field.criticality_rationale}</span>
+          </div>
         )}
         {field.source_docs?.length > 0 && (
-          <p className="flex gap-1.5 flex-wrap items-start">
-            <FileText className="w-3 h-3 mt-0.5 shrink-0 text-muted-foreground/50" />
-            <span className="flex flex-wrap gap-1">
+          <div className="flex gap-2.5 items-start">
+            <FileText className="w-3.5 h-3.5 mt-0.5 shrink-0 text-muted-foreground/40" />
+            <div className="flex flex-wrap gap-1.5">
               {field.source_docs.map((d) => (
-                <span key={d} className="px-1.5 py-0.5 rounded bg-muted/60 border border-border/40 font-medium">{d}</span>
+                <span key={d} className="px-2 py-0.5 rounded-lg bg-muted/50 border border-border/40 text-[10px] font-bold text-muted-foreground/60">{d}</span>
               ))}
-            </span>
-          </p>
+            </div>
+          </div>
         )}
         {field.confidence_threshold != null && (
-          <p className="text-[10px]">Confidence: <span className="font-bold text-foreground/70">{field.confidence_threshold}</span></p>
+          <div className="flex items-center gap-2 pt-1">
+            <div className="h-1 flex-1 bg-muted rounded-full overflow-hidden">
+              <div className="h-full bg-primary/40 rounded-full" style={{ width: `${field.confidence_threshold * 100}%` }} />
+            </div>
+            <span className="text-[10px] font-black text-muted-foreground/40 uppercase tracking-widest shrink-0">
+              Confidence {field.confidence_threshold}
+            </span>
+          </div>
         )}
       </div>
     </div>
@@ -1029,183 +1036,189 @@ const SuperAdminExtractionSchema = () => {
 
       {/* ── Add / Edit Dialog ── */}
       <Dialog open={fieldDialog.open} onOpenChange={(v) => !v && setFieldDialog((p) => ({ ...p, open: false }))}>
-        <DialogContent className="sm:max-w-lg rounded-2xl p-0 overflow-hidden max-h-[92vh] flex flex-col gap-0">
-          {/* Dialog top bar */}
-          <div className="px-6 pt-6 pb-5 border-b border-border/50 shrink-0"
-            style={{ background: 'linear-gradient(135deg, hsl(var(--primary)/0.06) 0%, transparent 60%)' }}>
-            <DialogHeader>
-              <DialogTitle className="font-black text-lg flex items-center gap-3">
-                <span className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                  fieldDialog.mode === 'add' ? 'bg-primary/15 text-primary' : 'bg-amber-500/15 text-amber-500'
-                }`}>
-                  {fieldDialog.mode === 'add' ? <Plus className="w-4.5 h-4.5" /> : <Edit2 className="w-4.5 h-4.5" />}
-                </span>
-                {fieldDialog.mode === 'add' ? 'Add New Field' : 'Edit Field'}
-              </DialogTitle>
-              {fieldDialog.mode === 'edit' && fieldDialog.fieldName && (
-                <p className="text-sm text-muted-foreground mt-1 ml-12">
-                  <span className="font-semibold text-foreground">{toLabel(fieldDialog.fieldName)}</span>
-                  {' '}in <span className="font-semibold">{toLabel(fieldDialog.data.section || '')}</span>
-                </p>
-              )}
+        <DialogContent className="sm:max-w-xl rounded-3xl p-0 overflow-hidden flex flex-col max-h-[90vh] border-none shadow-2xl">
+          {/* Header */}
+          <div className="px-8 pt-8 pb-6 border-b border-border/40 shrink-0 relative overflow-hidden"
+            style={{ background: 'linear-gradient(135deg, hsl(var(--primary)/0.08) 0%, transparent 100%)' }}>
+            <div className="absolute top-0 right-0 p-8 opacity-5">
+              {fieldDialog.mode === 'add' ? <Plus className="w-24 h-24" /> : <Edit2 className="w-24 h-24" />}
+            </div>
+            <DialogHeader className="relative z-10">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-primary/15 text-primary flex items-center justify-center shadow-inner shrink-0">
+                  {fieldDialog.mode === 'add' ? <Plus className="w-6 h-6" /> : <Edit2 className="w-6 h-6" />}
+                </div>
+                <div>
+                  <DialogTitle className="font-black text-xl tracking-tight">
+                    {fieldDialog.mode === 'add' ? 'Add New Field' : 'Edit Field'}
+                  </DialogTitle>
+                  <p className="text-sm text-muted-foreground font-medium mt-0.5">
+                    {fieldDialog.mode === 'add' 
+                      ? 'Define a new data point for intelligence extraction.' 
+                      : `Modify configuration for ${toLabel(fieldDialog.fieldName)}`}
+                  </p>
+                </div>
+              </div>
             </DialogHeader>
           </div>
 
-          {/* Scrollable form */}
-          <div className="overflow-y-auto px-6 py-5 space-y-5 flex-1">
+          {/* Body */}
+          <div className="px-8 py-6 flex-1 overflow-y-auto space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Section */}
+              <div className={fieldDialog.sectionLocked ? 'opacity-50 pointer-events-none' : ''}>
+                <CustomDropdown
+                  label="Extraction Section"
+                  value={fieldDialog.data.section || SECTIONS[0]}
+                  options={SECTIONS}
+                  onChange={(v) => upd({ section: v })}
+                  renderSelected={(v) => <span className="font-black text-sm">{toLabel(v)}</span>}
+                  renderOption={(v) => <span className="text-sm font-bold">{toLabel(v)}</span>}
+                />
+              </div>
 
-            {/* Section */}
-            <div className={fieldDialog.sectionLocked ? 'opacity-70 pointer-events-none' : ''}>
-              <CustomDropdown
-                label="Section"
-                value={fieldDialog.data.section || SECTIONS[0]}
-                options={SECTIONS}
-                onChange={(v) => upd({ section: v })}
-                renderSelected={(v) => <span className="font-medium text-sm">{toLabel(v)}</span>}
-                renderOption={(v) => <span className="text-sm">{toLabel(v)}</span>}
-              />
-              {fieldDialog.sectionLocked && (
-                <p className="text-[10px] text-muted-foreground mt-1 ml-1">Section is locked for this entry.</p>
-              )}
+              {/* Field Name */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] ml-1">
+                  Field Key Name
+                </label>
+                <Input
+                  placeholder="e.g. patient_name"
+                  value={fieldDialog.data.field_name || ''}
+                  onChange={(e) => upd({ field_name: e.target.value })}
+                  className="rounded-2xl h-12 font-mono text-sm border-2 border-border/40 focus:border-primary/40 bg-muted/5 shadow-inner"
+                  disabled={fieldDialog.mode === 'edit'}
+                />
+              </div>
             </div>
 
-            {/* Field Name */}
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                Field Name <span className="text-red-500">*</span>
-              </label>
-              <Input
-                placeholder="e.g. patient_name"
-                value={fieldDialog.data.field_name || ''}
-                onChange={(e) => upd({ field_name: e.target.value })}
-                className="rounded-xl h-11 font-mono text-sm"
-                disabled={fieldDialog.mode === 'edit'}
-              />
-              <p className="text-[10px] text-muted-foreground/70">Use snake_case — this is the API key name.</p>
-            </div>
-
-            {/* Type + Criticality */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Type */}
               <CustomDropdown
-                label="Type"
+                label="Data Type"
                 value={fieldDialog.data.type}
                 options={FIELD_TYPES}
                 onChange={(v) => upd({ type: v })}
                 renderSelected={(v) => (
-                  <span className={`px-2 py-0.5 rounded text-[11px] font-mono font-bold border ${typeColors[v] || ''}`}>{v}</span>
+                  <span className={`px-3 py-1 rounded-xl text-[11px] font-black uppercase tracking-widest border-2 ${typeColors[v] || ''}`}>{v}</span>
                 )}
                 renderOption={(v) => (
-                  <span className={`px-2 py-0.5 rounded text-[11px] font-mono font-bold border ${typeColors[v] || 'bg-muted text-muted-foreground border-border/50'}`}>{v}</span>
+                  <span className={`px-3 py-1 rounded-xl text-[11px] font-black uppercase tracking-widest border-2 ${typeColors[v] || 'bg-muted text-muted-foreground border-border/50'}`}>{v}</span>
                 )}
               />
+
+              {/* Criticality */}
               <CustomDropdown
-                label="Criticality"
+                label="Criticality Level"
                 value={fieldDialog.data.criticality}
                 options={CRITICALITY_VALUES}
                 onChange={(v) => upd({ criticality: v })}
                 renderSelected={(v) => {
                   const c = critConfig[v];
                   return (
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide border ${c.bg} ${c.text} ${c.border}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />{v}
+                    <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border-2 ${c.bg} ${c.text} ${c.border}`}>
+                      <span className={`w-2 h-2 rounded-full ${c.dot}`} />{v}
                     </span>
                   );
                 }}
                 renderOption={(v) => {
                   const c = critConfig[v];
                   return (
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide border ${c.bg} ${c.text} ${c.border}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />{v}
+                    <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border-2 ${c.bg} ${c.text} ${c.border}`}>
+                      <span className={`w-2 h-2 rounded-full ${c.dot}`} />{v}
                     </span>
                   );
                 }}
               />
             </div>
 
-            {/* Confidence */}
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Confidence Threshold (0–1)</label>
-              <Input placeholder="e.g. 0.90" type="number" step="0.01" min="0" max="1"
-                value={fieldDialog.data.confidence_threshold}
-                onChange={(e) => upd({ confidence_threshold: e.target.value })}
-                className="rounded-xl h-11 text-sm" />
-            </div>
-
-            {/* Source docs */}
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Source Docs</label>
-              <Input placeholder="Rx, Clinical Notes, Order Form"
-                value={fieldDialog.data.source_docs}
-                onChange={(e) => upd({ source_docs: e.target.value })}
-                className="rounded-xl h-11 text-sm" />
-              <p className="text-[10px] text-muted-foreground/70">Comma-separated list.</p>
-            </div>
-
-            {/* Validation */}
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Validation Rule</label>
-              <Input placeholder="Describe validation logic…"
-                value={fieldDialog.data.validation}
-                onChange={(e) => upd({ validation: e.target.value })}
-                className="rounded-xl h-11 text-sm" />
-            </div>
-
-            {/* Rationale */}
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Criticality Rationale</label>
-              <textarea
-                placeholder="Explain why this field has this criticality…"
-                value={fieldDialog.data.criticality_rationale}
-                onChange={(e) => upd({ criticality_rationale: e.target.value })}
-                rows={2}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border/60 text-sm focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10 resize-none transition-all" />
-            </div>
-
-            {/* Toggle switches */}
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Options</label>
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  { key: 'required',        label: 'Required',   activeColor: 'bg-primary' },
-                  { key: 'active',          label: 'Active',     activeColor: 'bg-emerald-500' },
-                  { key: 'cross_doc_check', label: 'Cross-doc',  activeColor: 'bg-violet-500' },
-                ].map(({ key, label, activeColor }) => {
-                  const on = !!fieldDialog.data[key];
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => upd({ [key]: !on })}
-                      className={`flex flex-col items-center justify-center gap-2 py-3 px-2 rounded-xl border cursor-pointer transition-all select-none ${
-                        on ? 'border-primary/30 bg-primary/5' : 'border-border/50 hover:border-border bg-muted/20'
-                      }`}
-                    >
-                      {/* Mini toggle track */}
-                      <div className={`w-9 h-[18px] rounded-full relative transition-colors duration-200 ${on ? activeColor : 'bg-muted-foreground/20'}`}>
-                        <span className={`absolute top-0.5 w-3.5 h-3.5 bg-white rounded-full shadow transition-all duration-200 ${on ? 'left-[18px]' : 'left-0.5'}`} />
-                      </div>
-                      <span className={`text-[11px] font-bold transition-colors ${on ? 'text-foreground' : 'text-muted-foreground'}`}>{label}</span>
-                    </button>
-                  );
-                })}
+            {/* Source docs + Confidence */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] ml-1">Source Documents</label>
+                <Input placeholder="Rx, Clinical Notes, etc."
+                  value={fieldDialog.data.source_docs}
+                  onChange={(e) => upd({ source_docs: e.target.value })}
+                  className="rounded-2xl h-12 text-sm border-2 border-border/40 focus:border-primary/40 bg-muted/5 shadow-inner" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] ml-1">Confidence Threshold</label>
+                <Input placeholder="0.90" type="number" step="0.01" min="0" max="1"
+                  value={fieldDialog.data.confidence_threshold}
+                  onChange={(e) => upd({ confidence_threshold: e.target.value })}
+                  className="rounded-2xl h-12 text-sm border-2 border-border/40 focus:border-primary/40 bg-muted/5 shadow-inner" />
               </div>
             </div>
 
+            {/* Validation */}
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] ml-1">Validation Logic</label>
+              <Input placeholder="Describe the validation rule for this field…"
+                value={fieldDialog.data.validation}
+                onChange={(e) => upd({ validation: e.target.value })}
+                className="rounded-2xl h-12 text-sm border-2 border-border/40 focus:border-primary/40 bg-muted/5 shadow-inner" />
+            </div>
+
+            {/* Rationale */}
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] ml-1">Criticality Rationale</label>
+              <textarea
+                placeholder="Explain the business importance of this field…"
+                value={fieldDialog.data.criticality_rationale}
+                onChange={(e) => upd({ criticality_rationale: e.target.value })}
+                rows={3}
+                className="w-full px-5 py-4 rounded-2xl bg-muted/5 border-2 border-border/40 text-sm focus:outline-none focus:border-primary/40 focus:ring-4 focus:ring-primary/5 resize-none transition-all shadow-inner font-medium" />
+            </div>
+
+            {/* Toggles */}
+            <div className="grid grid-cols-3 gap-4 pt-2">
+              {[
+                { key: 'required',        label: 'Required',   icon: Shield,   color: 'text-primary',   bg: 'bg-primary/10' },
+                { key: 'active',          label: 'Active',     icon: Check,    color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+                { key: 'cross_doc_check', label: 'Cross-doc',  icon: Link2,    color: 'text-violet-500', bg: 'bg-violet-500/10' },
+              ].map(({ key, label, icon: Icon, color, bg }) => {
+                const on = !!fieldDialog.data[key];
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => upd({ [key]: !on })}
+                    className={`flex flex-col items-center gap-3 p-4 rounded-3xl border-2 transition-all duration-300 ${
+                      on ? `border-primary/40 ${bg} shadow-md` : 'border-border/40 bg-muted/5 hover:border-border'
+                    }`}
+                  >
+                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shadow-inner ${on ? 'bg-white' : 'bg-muted'}`}>
+                      <Icon className={`w-5 h-5 ${on ? color : 'text-muted-foreground/40'}`} />
+                    </div>
+                    <span className={`text-[10px] font-black uppercase tracking-widest ${on ? 'text-foreground' : 'text-muted-foreground/60'}`}>{label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
             {fieldSaveError && (
-              <div className="flex items-center gap-2 px-3.5 py-2.5 bg-destructive/10 border border-destructive/20 rounded-xl text-xs text-destructive font-medium">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" />{fieldSaveError}
+              <div className="flex items-center gap-3 p-4 bg-destructive/10 border-2 border-destructive/20 rounded-2xl text-xs text-destructive font-black animate-in shake">
+                <AlertCircle className="w-5 h-5 shrink-0" />
+                {fieldSaveError}
               </div>
             )}
           </div>
 
           {/* Footer */}
-          <div className="px-6 py-4 border-t border-border/50 bg-muted/20 flex justify-end gap-2 shrink-0">
-            <Button variant="outline" onClick={() => setFieldDialog((p) => ({ ...p, open: false }))}
-              disabled={isSavingField} className="rounded-xl font-bold">
+          <div className="px-8 py-6 border-t border-border/40 bg-muted/10 flex justify-between items-center shrink-0">
+            <button
+              onClick={() => setFieldDialog((p) => ({ ...p, open: false }))}
+              disabled={isSavingField}
+              className="text-sm font-black text-muted-foreground hover:text-foreground transition-colors px-2"
+            >
               Cancel
-            </Button>
-            <Button onClick={handleFieldSave} disabled={isSavingField} className="rounded-xl font-bold gap-2">
-              {isSavingField ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            </button>
+            <Button
+              onClick={handleFieldSave}
+              disabled={isSavingField}
+              className="rounded-2xl font-black text-sm h-12 px-8 bg-primary hover:bg-primary/90 shadow-xl shadow-primary/25 gap-2 transition-all active:scale-95"
+            >
+              {isSavingField ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               {isSavingField ? 'Saving…' : fieldDialog.mode === 'add' ? 'Add Field' : 'Save Changes'}
             </Button>
           </div>

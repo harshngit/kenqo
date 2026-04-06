@@ -153,7 +153,7 @@ const SuperAdminPrompts = () => {
   }
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 relative">
+    <div className="space-y-8 animate-in fade-in duration-500 pb-12">
       {/* Subsequent Loading Overlay */}
       {isFetching && !isInitialLoading && (
         <div className="fixed inset-0 z-[100] bg-background/40 backdrop-blur-[1px] flex items-center justify-center animate-in fade-in duration-300">
@@ -163,138 +163,144 @@ const SuperAdminPrompts = () => {
           </div>
         </div>
       )}
+
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-        <div className="space-y-2">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-[10px] font-bold uppercase tracking-widest">
-            <MessageSquare className="w-3.5 h-3.5" />
-            Prompt Management
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div className="space-y-3">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-[10px] font-black uppercase tracking-[0.2em] shadow-sm">
+            <MessageSquare className="w-3.5 h-3.5" /> Prompt Management
           </div>
-          <h1 className="text-2xl font-black tracking-tight">System Prompts</h1>
-          <p className="text-muted-foreground text-sm">
+          <h1 className="text-3xl font-black tracking-tight">
+            System Prompts
+          </h1>
+          <p className="text-muted-foreground text-sm font-medium">
             View and update AI prompts used for document processing
           </p>
         </div>
-        <Button
-          variant="outline"
-          onClick={fetchPrompts}
-          disabled={isFetching}
-          className="h-10 px-5 rounded-xl font-bold text-sm gap-2 self-start sm:self-auto"
-        >
-          <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-3 self-start md:self-auto">
+          <Button
+            variant="outline"
+            onClick={fetchPrompts}
+            disabled={isFetching}
+            className="h-11 px-5 rounded-2xl font-black text-sm gap-2 border-border/60 hover:bg-muted transition-all active:scale-95 shadow-sm"
+          >
+            <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
+            Refresh Data
+          </Button>
+        </div>
       </div>
 
       {/* Fetch loading */}
       {isFetching && (
-        <div className="py-24 flex flex-col items-center gap-4">
-          <Loader2 className="w-8 h-8 text-primary animate-spin" />
-          <p className="text-sm text-muted-foreground font-medium">Loading prompts...</p>
+        <div className="py-32 flex flex-col items-center gap-6 animate-pulse">
+          <div className="w-16 h-16 bg-primary/10 rounded-3xl flex items-center justify-center relative">
+            <MessageSquare className="w-8 h-8 text-primary" />
+            <div className="absolute inset-0 border-4 border-primary border-t-transparent rounded-3xl animate-spin" />
+          </div>
+          <div className="text-center space-y-1">
+            <p className="font-black text-lg">Synchronizing Prompts</p>
+            <p className="text-sm text-muted-foreground">Connecting to intelligence engine...</p>
+          </div>
         </div>
       )}
 
       {/* Fetch error */}
       {!isFetching && fetchError && (
-        <div className="py-16 flex flex-col items-center gap-4 px-6">
-          <div className="w-14 h-14 bg-destructive/10 rounded-full flex items-center justify-center">
-            <AlertCircle className="w-7 h-7 text-destructive" />
+        <div className="py-24 flex flex-col items-center gap-6 animate-in zoom-in-95">
+          <div className="w-20 h-20 bg-destructive/10 rounded-[2.5rem] flex items-center justify-center shadow-inner">
+            <AlertCircle className="w-10 h-10 text-destructive" />
           </div>
-          <div className="text-center space-y-1">
-            <p className="font-bold text-sm text-destructive">Failed to load prompts</p>
-            <p className="text-xs text-muted-foreground max-w-xs">{fetchError}</p>
+          <div className="text-center space-y-2">
+            <p className="font-black text-xl text-destructive">Connection Failed</p>
+            <p className="text-sm text-muted-foreground max-w-xs mx-auto font-medium">{fetchError}</p>
           </div>
-          <Button size="sm" onClick={fetchPrompts} className="rounded-xl px-4 h-9 text-sm font-bold">
-            Try Again
+          <Button onClick={fetchPrompts} className="rounded-2xl px-8 h-12 font-black bg-destructive hover:bg-destructive/90 shadow-xl shadow-destructive/20 transition-all active:scale-95">
+            Retry Connection
           </Button>
         </div>
       )}
 
       {/* Prompt Cards */}
       {!isFetching && !fetchError && (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {PROMPT_KEYS.map((key) => {
             const meta = promptMeta[key];
             const Icon = meta.icon;
             const isEditing = editMode[key];
             const state = saveState[key];
             const err = saveError[key];
-            const currentText = isEditing ? editValues[key] : prompts[key];
             const hasChanges = editValues[key] !== prompts[key];
 
             return (
               <Card
                 key={key}
-                className="border border-border/50 shadow-md rounded-2xl overflow-hidden bg-card/50 backdrop-blur-sm"
+                className={`group border-2 rounded-[2.5rem] overflow-hidden transition-all duration-300 ${
+                  isEditing 
+                    ? 'border-primary/40 bg-card shadow-xl shadow-primary/5' 
+                    : 'border-border/40 hover:border-primary/20 hover:shadow-lg'
+                }`}
               >
                 {/* Card Header */}
-                <CardHeader className={`px-6 py-5 border-b border-border/50 ${meta.headerBg}`}>
+                <CardHeader className={`px-8 py-6 border-b-2 ${meta.headerBg} border-border/10`}>
                   <div className="flex items-center justify-between gap-4 flex-wrap">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${meta.accent}`}>
-                        <Icon className="w-4.5 h-4.5" />
+                    <div className="flex items-center gap-4">
+                      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border-2 shadow-inner transition-transform duration-500 group-hover:scale-110 ${meta.accent}`}>
+                        <Icon className="w-6 h-6" />
                       </div>
                       <div>
-                        <div className="flex items-center gap-2">
-                          <CardTitle className="text-base font-black tracking-tight">{meta.label}</CardTitle>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${meta.accent}`}>
+                        <div className="flex items-center gap-3">
+                          <CardTitle className="text-lg font-black tracking-tight">{meta.label}</CardTitle>
+                          <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border-2 shadow-sm ${meta.accent}`}>
                             {key}
                           </span>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">{meta.description}</p>
+                        <p className="text-xs text-muted-foreground font-medium mt-0.5">{meta.description}</p>
                       </div>
                     </div>
 
                     {/* Actions */}
-                    <div className="flex items-center gap-2">
-                      {/* Success indicator */}
+                    <div className="flex items-center gap-3">
                       {state === 'success' && (
-                        <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 px-2.5 py-1 rounded-full bg-emerald-500/10">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
+                        <div className="flex items-center gap-2 text-xs font-black text-emerald-600 bg-emerald-500/10 px-4 py-1.5 rounded-full border border-emerald-500/20 animate-in fade-in slide-in-from-right-4">
+                          <CheckCircle2 className="w-4 h-4" />
                           Saved!
                         </div>
                       )}
 
                       {isEditing ? (
-                        <>
+                        <div className="flex items-center gap-2">
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => toggleEdit(key)}
                             disabled={state === 'saving'}
-                            className="h-8 px-3 text-xs rounded-xl font-bold hover:bg-muted gap-1.5"
+                            className="h-10 px-4 text-xs rounded-xl font-black hover:bg-muted text-muted-foreground transition-all"
                           >
-                            <X className="w-3.5 h-3.5" />
                             Cancel
                           </Button>
                           <Button
                             size="sm"
                             onClick={() => handleSave(key)}
                             disabled={state === 'saving' || !hasChanges}
-                            className="h-8 px-4 text-xs rounded-xl font-bold gap-1.5 bg-primary hover:bg-primary/90 shadow-sm shadow-primary/20"
+                            className="h-10 px-6 rounded-xl font-black text-xs gap-2 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all active:scale-95"
                           >
                             {state === 'saving' ? (
-                              <>
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                Saving...
-                              </>
+                              <Loader2 className="w-4 h-4 animate-spin" />
                             ) : (
-                              <>
-                                <Save className="w-3.5 h-3.5" />
-                                Save
-                              </>
+                              <Save className="w-4 h-4" />
                             )}
+                            {state === 'saving' ? 'Saving...' : 'Save Changes'}
                           </Button>
-                        </>
+                        </div>
                       ) : (
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => toggleEdit(key)}
-                          className="h-8 px-3 text-xs rounded-xl font-bold gap-1.5 hover:bg-primary/10 hover:text-primary hover:border-primary/30 transition-colors"
+                          className="h-10 px-5 text-xs rounded-xl font-black gap-2 border-primary/20 text-primary hover:bg-primary hover:text-white transition-all active:scale-95 shadow-sm"
                         >
-                          <Edit2 className="w-3.5 h-3.5" />
-                          Edit
+                          <Edit2 className="w-4 h-4" />
+                          Edit Prompt
                         </Button>
                       )}
                     </div>
@@ -304,43 +310,58 @@ const SuperAdminPrompts = () => {
                 {/* Card Body */}
                 <CardContent className="p-0">
                   {isEditing ? (
-                    <div className="p-5 space-y-3">
+                    <div className="p-8 space-y-4">
                       <textarea
-                        className="w-full min-h-[280px] bg-background border border-border/60 focus:border-primary/50 focus:ring-2 focus:ring-primary/10 rounded-xl p-4 font-mono text-sm text-foreground/80 leading-relaxed resize-y outline-none transition-all placeholder:text-muted-foreground/40"
+                        className="w-full min-h-[350px] bg-muted/10 border-2 border-border/40 focus:border-primary/40 focus:ring-4 focus:ring-primary/5 rounded-[1.5rem] p-6 font-mono text-sm text-foreground/80 leading-relaxed resize-none outline-none transition-all placeholder:text-muted-foreground/30 shadow-inner"
                         value={editValues[key]}
                         onChange={(e) =>
                           setEditValues((prev) => ({ ...prev, [key]: e.target.value }))
                         }
                         placeholder={`Enter the ${meta.label} prompt here...`}
                       />
-                      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                        <span>{wordCount(editValues[key])} words · {(editValues[key] || '').length} chars</span>
+                      <div className="flex items-center justify-between px-2">
+                        <div className="flex items-center gap-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
+                          <span>{wordCount(editValues[key])} words</span>
+                          <span className="w-1 h-1 rounded-full bg-border" />
+                          <span>{(editValues[key] || '').length} characters</span>
+                        </div>
                         {hasChanges && (
-                          <span className="text-amber-600 dark:text-amber-400 font-bold">Unsaved changes</span>
+                          <span className="text-[10px] font-black uppercase tracking-widest text-amber-600 bg-amber-500/10 px-3 py-1 rounded-full animate-pulse">
+                            Unsaved Changes
+                          </span>
                         )}
                       </div>
                       {err && (
-                        <div className="flex items-center gap-2 px-3 py-2.5 bg-destructive/10 border border-destructive/20 rounded-xl text-xs text-destructive font-medium">
-                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        <div className="flex items-center gap-3 p-4 bg-destructive/10 border border-destructive/20 rounded-2xl text-xs text-destructive font-bold animate-in shake">
+                          <AlertCircle className="w-4 h-4 shrink-0" />
                           {err}
                         </div>
                       )}
                     </div>
                   ) : (
-                    <div className="p-5">
+                    <div className="p-8">
                       {prompts[key] ? (
-                        <>
-                          <div className="bg-muted/30 border border-border/40 rounded-xl p-4 font-mono text-sm text-foreground/70 leading-relaxed whitespace-pre-wrap max-h-[320px] overflow-y-auto">
+                        <div className="space-y-4">
+                          <div className="bg-muted/30 border-2 border-border/40 rounded-[1.5rem] p-6 font-mono text-sm text-foreground/70 leading-relaxed whitespace-pre-wrap max-h-[350px] overflow-y-auto shadow-inner group-hover:bg-muted/40 transition-colors">
                             {prompts[key]}
                           </div>
-                          <div className="mt-2.5 text-[11px] text-muted-foreground">
-                            {wordCount(prompts[key])} words · {(prompts[key] || '').length} characters
+                          <div className="flex items-center gap-4 px-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground/40">
+                            <span>{wordCount(prompts[key])} words</span>
+                            <span className="w-1 h-1 rounded-full bg-border" />
+                            <span>{(prompts[key] || '').length} characters</span>
                           </div>
-                        </>
+                        </div>
                       ) : (
-                        <div className="py-10 text-center text-sm text-muted-foreground">
-                          <MessageSquare className="w-8 h-8 mx-auto mb-3 opacity-20" />
-                          No prompt configured yet. Click <strong>Edit</strong> to add one.
+                        <div className="py-20 flex flex-col items-center justify-center gap-4 text-center">
+                          <div className="w-20 h-20 bg-muted/30 rounded-[2.5rem] flex items-center justify-center opacity-20 group-hover:opacity-40 transition-opacity">
+                            <MessageSquare className="w-10 h-10" />
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-sm font-black text-muted-foreground/60">No prompt configured</p>
+                            <Button variant="link" size="sm" onClick={() => toggleEdit(key)} className="font-black text-primary p-0 h-auto">
+                              Click to create prompt
+                            </Button>
+                          </div>
                         </div>
                       )}
                     </div>

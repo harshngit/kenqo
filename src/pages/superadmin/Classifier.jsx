@@ -180,171 +180,122 @@ const DocTypeModal = ({ docType, allAgents, userId, token, onClose, onSaved }) =
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-      <div
-        className="relative w-full max-w-xl max-h-[92vh] flex flex-col bg-background border border-border/60 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200"
-        onClick={e => e.stopPropagation()}
-      >
+    <Dialog open={true} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-xl rounded-3xl p-0 overflow-hidden flex flex-col max-h-[90vh] border-none shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border/50 bg-muted/20 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-              <FileText className="w-5 h-5 text-primary" />
-            </div>
-            <p className="font-black text-lg tracking-tight">{isEdit ? `Edit: ${toLabel(docType.name)}` : 'New Document Type'}</p>
+        <div className="px-8 pt-8 pb-6 border-b border-border/40 shrink-0 relative overflow-hidden"
+          style={{ background: 'linear-gradient(135deg, hsl(var(--primary)/0.08) 0%, transparent 100%)' }}>
+          <div className="absolute top-0 right-0 p-8 opacity-5">
+            {isEdit ? <Edit2 className="w-24 h-24" /> : <Plus className="w-24 h-24" />}
           </div>
-          <button onClick={onClose} className="p-2 rounded-xl hover:bg-muted text-muted-foreground hover:text-foreground transition-all">
-            <X className="w-5 h-5" />
-          </button>
+          <DialogHeader className="relative z-10">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-primary/15 text-primary flex items-center justify-center shadow-inner shrink-0">
+                {isEdit ? <Edit2 className="w-6 h-6" /> : <Plus className="w-6 h-6" />}
+              </div>
+              <div>
+                <DialogTitle className="font-black text-xl tracking-tight">
+                  {isEdit ? 'Edit Doc Type' : 'Add Doc Type'}
+                </DialogTitle>
+                <p className="text-sm text-muted-foreground font-medium mt-0.5">
+                  {isEdit ? `Modify configuration for ${toLabel(docType.name)}` : 'Define a new category for document routing.'}
+                </p>
+              </div>
+            </div>
+          </DialogHeader>
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6">
-          {error && (
-            <div className="flex items-center gap-3 p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm font-bold animate-in shake duration-300">
-              <AlertCircle className="w-5 h-5 shrink-0" />{error}
-            </div>
-          )}
-
-          {/* Name */}
+        <div className="px-8 py-6 flex-1 overflow-y-auto space-y-6">
           <div className="space-y-2">
-            <label className="text-[11px] font-black text-muted-foreground uppercase tracking-[0.1em]">Name *</label>
+            <label className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] ml-1">Document Type Name</label>
             <input
-              className="w-full h-12 px-4 rounded-xl border border-border/60 bg-muted/10 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all placeholder:font-normal"
+              className="w-full h-12 px-4 rounded-2xl border-2 border-border/40 bg-muted/5 text-sm font-mono focus:outline-none focus:border-primary/40 shadow-inner transition-all"
               value={isEdit ? toLabel(form.name) : form.name}
               onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-              placeholder="e.g. Prescription"
+              placeholder="e.g. medical_report"
               disabled={isEdit}
             />
           </div>
 
-          {/* Description */}
-          <div className="space-y-2">
-            <label className="text-[11px] font-black text-muted-foreground uppercase tracking-[0.1em]">Description</label>
-            <textarea
-              rows={2}
-              className="w-full px-4 py-3 rounded-xl border border-border/60 bg-muted/10 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all resize-none leading-relaxed"
-              value={form.description}
-              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-              placeholder="Physician letterhead + signature block + diagnosis codes + items ordered + NPI"
-            />
-          </div>
-
-          {/* Anchors */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <label className="text-[11px] font-black text-muted-foreground uppercase tracking-[0.1em] flex items-center gap-2">
-                <Anchor className="w-3.5 h-3.5" />
-                Classification Anchors
-              </label>
-              <span className="text-[10px] text-muted-foreground font-medium italic">Unique text patterns for classification</span>
-            </div>
-            
-            <div className="flex gap-2 p-1.5 rounded-2xl bg-muted/20 border border-border/40 group focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/5 transition-all">
+            <label className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] ml-1 flex items-center justify-between">
+              Anchors (Keywords)
+              <span className="text-muted-foreground/40 normal-case font-medium">Add keywords that help identify this doc type</span>
+            </label>
+            <div className="flex flex-wrap gap-2 p-4 rounded-2xl border-2 border-border/40 bg-muted/5 shadow-inner min-h-[100px] transition-all focus-within:border-primary/40">
+              {form.anchors.map((a, i) => (
+                <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-primary/10 text-primary border-2 border-primary/20 shadow-sm animate-in zoom-in-95">
+                  <span className="text-xs font-black">{a}</span>
+                  <button onClick={() => removeAnchor(a)} className="hover:text-destructive transition-colors">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
               <input
-                className="flex-1 h-10 px-3 bg-transparent text-sm focus:outline-none placeholder:text-muted-foreground/50"
+                className="bg-transparent border-none outline-none text-sm font-medium placeholder:text-muted-foreground/30 flex-1 min-w-[120px]"
+                placeholder="Type and press Enter..."
                 value={newAnchor}
                 onChange={e => setNewAnchor(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addAnchor())}
-                placeholder="Type anchor (e.g. 'Prescription Date')..."
               />
-              <Button 
-                onClick={addAnchor} 
-                disabled={!newAnchor.trim()}
-                className="h-10 px-4 rounded-xl font-black text-xs gap-2 bg-primary hover:bg-primary/90 shadow-sm"
-              >
-                <Plus className="w-3.5 h-3.5" /> Add Anchor
-              </Button>
-            </div>
-
-            <div className="flex flex-wrap gap-2 min-h-[50px] p-3.5 rounded-2xl border-2 border-dashed border-border/30 bg-muted/5">
-              {form.anchors.length > 0 ? (
-                form.anchors.map(a => (
-                  <div key={a} className="group flex items-center gap-2 px-3 py-1.5 rounded-xl bg-background border border-border/60 text-xs font-bold hover:border-primary/40 hover:bg-primary/5 hover:text-primary transition-all shadow-sm animate-in zoom-in-95">
-                    <Tag className="w-3 h-3 opacity-40 group-hover:opacity-100" />
-                    <span className="font-mono">{a}</span>
-                    <button 
-                      onClick={() => removeAnchor(a)} 
-                      className="ml-1 p-0.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all opacity-0 group-hover:opacity-100"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))
-              ) : (
-                <div className="w-full flex flex-col items-center justify-center py-2 text-muted-foreground/40 gap-1">
-                  <Anchor className="w-6 h-6 opacity-20" />
-                  <p className="text-[10px] italic">No anchors yet. Add text that is unique to this doc type.</p>
-                </div>
-              )}
             </div>
           </div>
 
-          {/* Agents */}
-          {allAgents.length > 0 && (
-            <div className="space-y-3">
-              <label className="text-[11px] font-black text-muted-foreground uppercase tracking-[0.1em] flex items-center gap-2">
-                <Bot className="w-3.5 h-3.5" />
-                Assigned Agents
-              </label>
-              <div className="flex flex-wrap gap-2.5">
-                {allAgents.map(ag => {
-                  const selected = form.agents.includes(ag.agent_id);
-                  return (
-                    <button
-                      key={ag.agent_id}
-                      onClick={() => toggleAgent(ag.agent_id)}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-black transition-all shadow-sm
-                        ${selected
-                          ? 'bg-primary/10 border-primary/40 text-primary ring-2 ring-primary/5'
-                          : 'bg-muted/30 border-border/40 text-muted-foreground hover:border-primary/20 hover:text-foreground grayscale hover:grayscale-0 opacity-70 hover:opacity-100'}`}
-                    >
-                      <Bot className="w-3.5 h-3.5" />
-                      #{ag.agent_id} {ag.agent_name}
-                      {selected && <CheckCircle2 className="w-3.5 h-3.5 fill-primary text-white" />}
-                    </button>
-                  );
-                })}
-              </div>
+          <div className="space-y-3">
+            <label className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] ml-1">Assigned Extraction Agents</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {allAgents.map(ag => {
+                const selected = form.agents.includes(ag.agent_id);
+                return (
+                  <button
+                    key={ag.agent_id}
+                    onClick={() => toggleAgent(ag.agent_id)}
+                    className={`flex items-center gap-3 p-3.5 rounded-2xl border-2 transition-all duration-300 ${
+                      selected ? 'border-primary/40 bg-primary/5 shadow-md' : 'border-border/40 bg-muted/5 hover:border-border'
+                    }`}
+                  >
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-inner ${selected ? 'bg-white' : 'bg-muted'}`}>
+                      <Bot className={`w-5 h-5 ${selected ? 'text-primary' : 'text-muted-foreground/40'}`} />
+                    </div>
+                    <div className="text-left">
+                      <p className={`text-sm font-black tracking-tight ${selected ? 'text-foreground' : 'text-muted-foreground'}`}>{ag.agent_name}</p>
+                      <p className="text-[10px] font-bold text-muted-foreground/50 uppercase tracking-widest">ID #{ag.agent_id}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {error && (
+            <div className="flex items-center gap-3 p-4 bg-destructive/10 border-2 border-destructive/20 rounded-2xl text-xs text-destructive font-black animate-in shake">
+              <AlertCircle className="w-5 h-5 shrink-0" />
+              {error}
             </div>
           )}
-
-          {/* Active toggle */}
-          <div className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${form.active ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-muted/20 border-border/40'}`}>
-            <div className="flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${form.active ? 'bg-emerald-500/20 text-emerald-600' : 'bg-muted text-muted-foreground'}`}>
-                <ShieldCheck className="w-5 h-5" />
-              </div>
-              <div>
-                <p className={`text-sm font-black ${form.active ? 'text-emerald-700' : 'text-foreground'}`}>Include in Pipeline</p>
-                <p className="text-[11px] text-muted-foreground font-medium">Activate this document type for real-time classification</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setForm(f => ({ ...f, active: !f.active }))}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-all shadow-inner
-                ${form.active ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}
-            >
-              <span className={`inline-block h-4 w-4 rounded-full bg-white shadow-md transition-transform
-                ${form.active ? 'translate-x-6' : 'translate-x-1'}`} />
-            </button>
-          </div>
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-8 py-5 border-t border-border/50 bg-muted/5 shrink-0">
-          <button onClick={onClose} className="text-sm font-bold text-muted-foreground hover:text-foreground transition-colors px-2">Cancel</button>
+        <div className="px-8 py-6 border-t border-border/40 bg-muted/10 flex justify-between items-center shrink-0">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="text-sm font-black text-muted-foreground hover:text-foreground transition-colors px-2"
+          >
+            Cancel
+          </button>
           <Button
             onClick={handleSave}
             disabled={saving}
-            className="h-11 px-8 rounded-xl text-sm font-black gap-2 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all active:scale-95"
+            className="rounded-2xl font-black text-sm h-12 px-8 bg-primary hover:bg-primary/90 shadow-xl shadow-primary/25 gap-2 transition-all active:scale-95"
           >
-            {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</> : <><Save className="w-4 h-4" /> Save Changes</>}
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {saving ? 'Saving…' : isEdit ? 'Update Type' : 'Create Type'}
           </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 
@@ -357,9 +308,6 @@ const PromptEditor = ({ promptData, userId, token, onChange }) => {
   const [saving,   setSaving]   = useState(false);
   const [saved,    setSaved]    = useState(false);
   const [error,    setError]    = useState(null);
-
-  // sync if promptData changes from parent (after fetch)
-  useEffect(() => { setEdits({ ...promptData }); }, [promptData]);
 
   const handleSave = async () => {
     setSaving(true); setSaved(false); setError(null);
@@ -384,57 +332,70 @@ const PromptEditor = ({ promptData, userId, token, onChange }) => {
     }
   };
 
+  const sections = [
+    { key: 'system_persona',          label: 'System Persona',    icon: UserCircle2, color: 'text-primary',   bg: 'bg-primary/10' },
+    { key: 'dual_layer_task',         label: 'Classification Task', icon: Layers3,     color: 'text-violet-500', bg: 'bg-violet-500/10' },
+    { key: 'operational_constraints', label: 'Constraints',         icon: ShieldCheck, color: 'text-amber-500',  bg: 'bg-amber-500/10' },
+    { key: 'output_schema',           label: 'Output Structure',    icon: Sparkles,    color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+  ];
+
   return (
-    <div className="space-y-3">
-      {/* banners */}
-      {saved && (
-        <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-600 dark:text-emerald-400 text-sm font-medium">
-          <CheckCircle2 className="w-4 h-4" /> Classifier prompt updated successfully!
-        </div>
-      )}
-      {error && (
-        <div className="flex items-center gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm">
-          <AlertCircle className="w-4 h-4 shrink-0" /> {error}
-        </div>
-      )}
-
-      {PROMPT_FIELDS.map(({ key, label, Icon, accent, bg }) => (
-        <div key={key} className="border border-border/40 rounded-2xl overflow-hidden">
-          <button
-            className="w-full flex items-center justify-between px-5 py-3.5 bg-muted/20 hover:bg-muted/40 transition-colors text-left"
-            onClick={() => setExpanded(p => ({ ...p, [key]: !p[key] }))}
-          >
-            <div className="flex items-center gap-2.5">
-              <div className={`p-1.5 rounded-lg ${bg}`}>
-                <Icon className={`w-3.5 h-3.5 ${accent}`} />
+    <div className="space-y-6">
+      <div className="space-y-4">
+        {sections.map(({ key, label, icon: Icon, color, bg }) => (
+          <div key={key} className="border-2 border-border/40 rounded-[1.5rem] overflow-hidden bg-card transition-all">
+            <button
+              className="w-full flex items-center justify-between px-6 py-4 bg-muted/20 hover:bg-muted/40 transition-colors text-left"
+              onClick={() => setExpanded(p => ({ ...p, [key]: !p[key] }))}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`p-2.5 rounded-xl ${bg}`}>
+                  <Icon className={`w-4 h-4 ${color}`} />
+                </div>
+                <span className="text-sm font-black tracking-tight">{label}</span>
+                {edits[key] !== promptData[key] && (
+                  <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 shadow-sm">
+                    Edited
+                  </span>
+                )}
               </div>
-              <span className="text-sm font-bold">{label}</span>
-            </div>
-            {expanded[key] ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-          </button>
-          {expanded[key] && (
-            <div className="p-4 bg-background">
-              <textarea
-                rows={8}
-                className="w-full text-xs font-mono bg-muted/20 border border-border/40 rounded-xl p-3 text-foreground resize-y focus:outline-none focus:ring-2 focus:ring-primary/40 leading-relaxed"
-                value={edits[key] ?? ''}
-                onChange={e => setEdits(p => ({ ...p, [key]: e.target.value }))}
-                placeholder={`Enter ${label.toLowerCase()}…`}
-              />
-            </div>
-          )}
-        </div>
-      ))}
+              <ChevronDown className={`w-4 h-4 text-muted-foreground/40 transition-transform duration-500 ${expanded[key] ? 'rotate-180' : ''}`} />
+            </button>
+            {expanded[key] && (
+              <div className="p-5 bg-background animate-in slide-in-from-top-2 duration-300">
+                <textarea
+                  rows={6}
+                  className="w-full text-xs font-mono bg-muted/10 border-2 border-border/40 rounded-2xl p-4 text-foreground resize-none focus:outline-none focus:border-primary/40 shadow-inner placeholder:text-muted-foreground/30 transition-all leading-relaxed"
+                  value={edits[key] || ''}
+                  onChange={e => setEdits(p => ({ ...p, [key]: e.target.value }))}
+                  placeholder={`Enter ${label.toLowerCase()} logic…`}
+                />
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
 
-      <div className="flex justify-end pt-1">
+      <div className="flex flex-col gap-4 pt-4">
+        {saved && (
+          <div className="flex items-center gap-3 p-4 bg-emerald-500/10 border-2 border-emerald-500/20 rounded-2xl text-emerald-600 text-xs font-black animate-in fade-in slide-in-from-bottom-2">
+            <CheckCircle2 className="w-5 h-5" />
+            Classifier configuration updated successfully!
+          </div>
+        )}
+        {error && (
+          <div className="flex items-center gap-3 p-4 bg-destructive/10 border-2 border-destructive/20 rounded-2xl text-destructive text-xs font-black animate-in shake">
+            <AlertCircle className="w-5 h-5 shrink-0" />
+            {error}
+          </div>
+        )}
         <Button
           onClick={handleSave}
-          disabled={saving}
-          className="h-9 px-5 rounded-xl text-sm font-bold gap-2 bg-primary hover:bg-primary/90 shadow-sm shadow-primary/20"
+          disabled={saving || JSON.stringify(edits) === JSON.stringify(promptData)}
+          className="w-full h-14 rounded-[1.5rem] font-black text-sm bg-primary hover:bg-primary/90 shadow-xl shadow-primary/25 gap-3 transition-all active:scale-[0.98]"
         >
-          {saving
-            ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…</>
-            : <><Save className="w-3.5 h-3.5" /> Save Prompt Changes</>}
+          {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+          {saving ? 'Synchronizing Engine…' : 'Save Classifier Config'}
         </Button>
       </div>
     </div>
@@ -444,80 +405,62 @@ const PromptEditor = ({ promptData, userId, token, onChange }) => {
 /* ─────────────────────────────────────────────
    DOCUMENT TYPE CARD (drag-drop target + source)
 ───────────────────────────────────────────── */
-const DocTypeCard = ({
-  docType, colorClass, allAgents, agentMap,
-  userId, token,
-  onToggle, onEdit, onDelete,
-  onAgentDragStart, onAgentDrop,
-  isTogglingName,
-}) => {
+function DocTypeCard({ docType, colorClass, agentMap, onToggle, onEdit, onDelete, onAgentDragStart, onAgentDrop, isTogglingName }) {
   const [isDragOver, setIsDragOver] = useState(false);
-  const isActive = docType.active;
+  const isActive = docType.active !== false;
 
-  const handleDragOver = (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setIsDragOver(true); };
-  const handleDragLeave = () => setIsDragOver(false);
   const handleDrop = (e) => {
     e.preventDefault();
     setIsDragOver(false);
     try {
       const payload = JSON.parse(e.dataTransfer.getData('application/json'));
-      if (payload.fromDocType !== docType.name) {
-        onAgentDrop(payload, docType.name);
-      }
+      onAgentDrop(payload, docType.name);
     } catch {}
   };
 
   return (
     <div
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
+      onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+      onDragLeave={() => setIsDragOver(false)}
       onDrop={handleDrop}
-      className={`border rounded-2xl p-4 bg-card transition-all duration-200 group
-        ${isActive ? 'border-border/50 shadow-sm' : 'border-border/30 opacity-65'}
-        ${isDragOver ? 'border-primary/60 bg-primary/5 shadow-md shadow-primary/10 scale-[1.01]' : ''}`}
+      className={`group relative rounded-[2rem] border-2 p-6 transition-all duration-300 ${
+        isDragOver ? 'border-primary bg-primary/5 scale-[1.02] shadow-2xl' :
+        isActive ? 'bg-card border-border/40 hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5' :
+        'bg-muted/10 border-border/20 opacity-60 grayscale-[0.5]'
+      }`}
     >
-      {/* Top row */}
-      <div className="flex items-start gap-3 mb-3">
-        <div className={`w-9 h-9 rounded-xl flex items-center justify-center border shrink-0 ${colorClass}`}>
-          <FileText className="w-4 h-4" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-0.5">
-            <p className="text-sm font-bold text-foreground">{toLabel(docType.name)}</p>
-            {!isActive && (
-              <span className="text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
-                inactive
-              </span>
-            )}
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4 mb-5">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border-2 shadow-inner transition-transform duration-500 group-hover:scale-110 ${colorClass}`}>
+            <FileText className="w-6 h-6" />
           </div>
-          {docType.description && (
-            <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2 italic">
-              {docType.description}
-            </p>
-          )}
+          <div className="min-w-0">
+            <h3 className="font-black text-lg tracking-tight truncate group-hover:text-primary transition-colors leading-tight">{toLabel(docType.name)}</h3>
+            <p className="text-[10px] font-bold text-muted-foreground/50 uppercase tracking-widest truncate">{docType.name}</p>
+          </div>
         </div>
-        {/* Toggle */}
         <button
           onClick={() => onToggle(docType.name, isActive)}
           disabled={isTogglingName === docType.name}
-          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors shrink-0 mt-0.5
+          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-all shadow-inner shrink-0 mt-1
             ${isTogglingName === docType.name ? 'opacity-50 cursor-wait' : 'cursor-pointer'}
-            ${isActive ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+            ${isActive ? 'bg-emerald-500' : 'bg-muted-foreground/30'}`}
         >
-          <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform
-            ${isActive ? 'translate-x-4' : 'translate-x-0.5'}`} />
+          <span className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform
+            ${isActive ? 'translate-x-6' : 'translate-x-1'}`} />
         </button>
       </div>
 
       {/* Anchors */}
       {docType.anchors?.length > 0 && (
-        <div className="mb-3">
-          <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-1.5 flex items-center gap-1">
-            <Anchor className="w-2.5 h-2.5" /> Anchors
+        <div className="mb-5">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/40 mb-2.5 flex items-center gap-2">
+            <Anchor className="w-3.5 h-3.5" /> Identification Anchors
           </p>
-          <div className="flex flex-wrap gap-1">
+          <div className="flex flex-wrap gap-2">
             {docType.anchors.map(anchor => (
-              <span key={anchor} className="text-[10px] font-semibold px-2 py-0.5 bg-muted/60 rounded-md text-muted-foreground font-mono">
+              <span key={anchor} className="text-[11px] font-bold px-3 py-1 bg-muted/50 rounded-xl text-muted-foreground border border-border/40 font-mono shadow-sm">
                 {anchor}
               </span>
             ))}
@@ -526,12 +469,13 @@ const DocTypeCard = ({
       )}
 
       {/* Agents zone */}
-      <div className="mb-3">
-        <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-1.5 flex items-center gap-1">
-          <Bot className="w-2.5 h-2.5" /> Agents
-          <span className="text-[9px] text-muted-foreground/40 font-normal normal-case tracking-normal ml-1">— drag to reassign</span>
+      <div className="mb-5">
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/40 mb-2.5 flex items-center gap-2">
+          <Bot className="w-3.5 h-3.5" /> Extraction Agents
         </p>
-        <div className="min-h-[32px] flex flex-wrap gap-1.5 p-2 rounded-xl border border-dashed border-border/40 bg-muted/10 transition-colors">
+        <div className={`min-h-[48px] flex flex-wrap gap-2 p-3 rounded-2xl border-2 border-dashed transition-all duration-300 ${
+          isDragOver ? 'border-primary/40 bg-primary/10' : 'border-border/40 bg-muted/5 group-hover:bg-muted/10'
+        }`}>
           {docType.agents?.length > 0 ? (
             docType.agents.map(agId => (
               <AgentBadge
@@ -546,46 +490,43 @@ const DocTypeCard = ({
               />
             ))
           ) : (
-            <span className="text-[10px] text-muted-foreground/40 italic px-1">
+            <span className="text-[11px] text-muted-foreground/40 italic px-2 py-1">
               {isDragOver ? 'Drop agent here' : 'No agents assigned — drop here'}
             </span>
-          )}
-          {isDragOver && docType.agents?.length > 0 && (
-            <span className="text-[10px] text-primary/60 italic px-1 animate-pulse">Drop to add agent</span>
           )}
         </div>
       </div>
 
       {/* Footer actions */}
-      <div className="flex items-center justify-between pt-1">
-        <div className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest
-          ${isActive ? 'text-emerald-500' : 'text-muted-foreground'}`}>
-          {isTogglingName === docType.name
-            ? <><Loader2 className="w-3 h-3 animate-spin" /> Updating…</>
-            : isActive
-              ? <><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Active</>
-              : <><span className="w-1.5 h-1.5 rounded-full bg-gray-400" /> Inactive</>}
+      <div className="flex items-center justify-between pt-5 border-t border-border/10">
+        <div className={`flex items-center gap-2.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-sm ${
+          isActive
+            ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
+            : 'bg-muted text-muted-foreground border-border/50'
+        }`}>
+          <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-emerald-500 animate-pulse' : 'bg-muted-foreground'}`} />
+          {isTogglingName === docType.name ? 'Updating…' : isActive ? 'Active' : 'Inactive'}
         </div>
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-2 group-hover:translate-x-0">
           <Button
-            variant="ghost" size="sm"
+            variant="outline" size="sm"
             onClick={() => onEdit(docType)}
-            className="h-7 px-2.5 text-xs rounded-lg hover:bg-primary/10 hover:text-primary font-bold gap-1"
+            className="h-9 px-4 text-xs rounded-xl border-primary/20 text-primary hover:bg-primary hover:text-white font-black transition-all active:scale-95 shadow-sm"
           >
-            <Edit2 className="w-3 h-3" /> Edit
+            <Edit2 className="w-3.5 h-3.5 mr-2" /> Edit
           </Button>
           <Button
-            variant="ghost" size="sm"
+            variant="outline" size="sm"
             onClick={() => onDelete(docType.name)}
-            className="h-7 px-2.5 text-xs rounded-lg hover:bg-destructive/10 hover:text-destructive font-bold gap-1"
+            className="h-9 px-4 text-xs rounded-xl border-red-500/20 text-red-500 hover:bg-red-500 hover:text-white font-black transition-all active:scale-95 shadow-sm"
           >
-            <Trash2 className="w-3 h-3" /> Delete
+            <Trash2 className="w-3.5 h-3.5 mr-2" /> Delete
           </Button>
         </div>
       </div>
     </div>
   );
-};
+}
 
 /* ─────────────────────────────────────────────
    DELETE CONFIRM MODAL
@@ -617,38 +558,59 @@ const DeleteModal = ({ name, userId, token, onClose, onDeleted }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-      <div className="relative w-full max-w-sm bg-background border border-border/60 rounded-2xl shadow-2xl p-6 animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2.5 rounded-xl bg-destructive/10">
-            <Trash2 className="w-5 h-5 text-destructive" />
+    <Dialog open={true} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-md rounded-3xl p-0 overflow-hidden flex flex-col border-none shadow-2xl">
+        <div className="px-8 pt-8 pb-6 border-b border-border/40 shrink-0 relative overflow-hidden bg-destructive/5">
+          <div className="absolute top-0 right-0 p-8 opacity-5">
+            <Trash2 className="w-24 h-24" />
           </div>
-          <div>
-            <p className="font-bold text-sm">Delete Document Type</p>
-            <p className="text-xs text-muted-foreground">This action cannot be undone.</p>
-          </div>
+          <DialogHeader className="relative z-10">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-destructive/15 text-destructive flex items-center justify-center shadow-inner shrink-0">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <DialogTitle className="font-black text-xl tracking-tight text-destructive">
+                  Delete Doc Type
+                </DialogTitle>
+                <p className="text-sm text-muted-foreground font-medium mt-0.5">
+                  This action cannot be undone.
+                </p>
+              </div>
+            </div>
+          </DialogHeader>
         </div>
-        <p className="text-sm text-muted-foreground mb-4">
-          Are you sure you want to delete <strong className="text-foreground">{name}</strong>?
-        </p>
-        {error && (
-          <div className="flex items-center gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm mb-3">
-            <AlertCircle className="w-4 h-4 shrink-0" />{error}
-          </div>
-        )}
-        <div className="flex gap-2 justify-end">
-          <Button variant="outline" onClick={onClose} className="h-9 px-4 rounded-xl text-sm font-bold">Cancel</Button>
+
+        <div className="px-8 py-6 space-y-4">
+          <p className="text-sm font-medium text-foreground/70 leading-relaxed">
+            Are you sure you want to delete <strong className="text-foreground font-black">{toLabel(name)}</strong>? This will remove all associated routing logic.
+          </p>
+          {error && (
+            <div className="flex items-center gap-3 p-4 bg-destructive/10 border border-destructive/20 rounded-2xl text-destructive text-xs font-black animate-in shake">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div className="px-8 py-6 border-t border-border/40 bg-muted/10 flex justify-between items-center shrink-0">
+          <button
+            onClick={onClose}
+            className="text-sm font-black text-muted-foreground hover:text-foreground transition-colors px-2"
+          >
+            Cancel
+          </button>
           <Button
             onClick={handleDelete}
             disabled={deleting}
-            className="h-9 px-4 rounded-xl text-sm font-bold gap-2 bg-destructive hover:bg-destructive/90 text-white"
+            className="rounded-2xl font-black text-sm h-12 px-8 bg-destructive hover:bg-destructive/90 text-white shadow-xl shadow-destructive/25 gap-2 transition-all active:scale-95"
           >
-            {deleting ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Deleting…</> : <><Trash2 className="w-3.5 h-3.5" /> Delete</>}
+            {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+            {deleting ? 'Deleting…' : 'Delete Type'}
           </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 
@@ -815,17 +777,29 @@ const SuperAdminClassifier = () => {
 
       await Promise.all([
         // Update Target
-        fetch(`${BASE_URL}/admin/config/${DISEASE}/classifier/agents`, {
+        fetch(`${BASE_URL}/admin/config/${DISEASE}/classifier/document-types`, {
           method: 'PUT',
           headers,
-          body: JSON.stringify({ user_id: userId, name: targetDocTypeName, agents: updatedTargetAgents }),
+          body: JSON.stringify({
+            user_id: userId,
+            document_type: {
+              ...targetDocType,
+              agents: updatedTargetAgents
+            }
+          }),
         }).then(r => { if (!r.ok) throw new Error(`Failed to update ${targetDocTypeName}`); return r; }),
         
         // Update Source
-        fetch(`${BASE_URL}/admin/config/${DISEASE}/classifier/agents`, {
+        fetch(`${BASE_URL}/admin/config/${DISEASE}/classifier/document-types`, {
           method: 'PUT',
           headers,
-          body: JSON.stringify({ user_id: userId, name: fromDocType, agents: updatedSourceAgents }),
+          body: JSON.stringify({
+            user_id: userId,
+            document_type: {
+              ...sourceDocType,
+              agents: updatedSourceAgents
+            }
+          }),
         }).then(r => { if (!r.ok) throw new Error(`Failed to update ${fromDocType}`); return r; })
       ]);
 
@@ -867,22 +841,22 @@ const SuperAdminClassifier = () => {
   const activeCount = docTypes.filter(d => d.active).length;
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300 relative">
+    <div className="space-y-8 animate-in fade-in duration-500 pb-12">
       {/* Toast */}
       {toast && (
-        <div className={`fixed top-6 right-6 z-[300] flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl animate-in slide-in-from-right-10 duration-300 border
+        <div className={`fixed top-6 right-6 z-[300] flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl animate-in slide-in-from-right-10 duration-300 border
           ${toast.type === 'error' ? 'bg-destructive/10 border-destructive/20 text-destructive' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600'}`}>
           {toast.type === 'error' ? <AlertCircle className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5" />}
-          <span className="text-sm font-bold">{toast.message}</span>
+          <span className="text-sm font-black">{toast.message}</span>
         </div>
       )}
 
       {/* Subsequent Loading Overlay */}
       {loading && !isInitialLoading && (
         <div className="fixed inset-0 z-[100] bg-background/40 backdrop-blur-[1px] flex items-center justify-center animate-in fade-in duration-300">
-          <div className="bg-card border border-border/50 shadow-2xl rounded-2xl p-6 flex flex-col items-center gap-3">
-            <Loader2 className="w-8 h-8 text-primary animate-spin" />
-            <p className="text-sm font-bold tracking-tight">Updating classifier list...</p>
+          <div className="bg-card border-2 border-border/50 shadow-2xl rounded-3xl p-8 flex flex-col items-center gap-4">
+            <Loader2 className="w-10 h-10 text-primary animate-spin" />
+            <p className="text-sm font-black tracking-tight">Updating classification engine...</p>
           </div>
         </div>
       )}
@@ -909,60 +883,79 @@ const SuperAdminClassifier = () => {
       )}
 
       {/* ── Header ── */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-        <div className="space-y-1.5">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-[10px] font-bold uppercase tracking-widest">
-            <Settings className="w-3.5 h-3.5" />
-            Classification Engine
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div className="space-y-3">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-[10px] font-black uppercase tracking-[0.2em] shadow-sm">
+            <Settings className="w-3.5 h-3.5" /> Intelligence Engine
           </div>
-          <h1 className="text-2xl font-black tracking-tight">Classifier</h1>
-          <div className="flex items-center gap-2">
-            <p className="text-muted-foreground text-sm">Document classification configuration</p>
-            <span className="px-2 py-0.5 rounded-md bg-muted text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-              {DISEASE}
-            </span>
+          <h1 className="text-3xl font-black tracking-tight">
+            Document Classifier
+          </h1>
+          <div className="flex items-center gap-3 text-muted-foreground text-sm font-medium">
+            <span>Configure routing logic and document types</span>
+            <span className="w-1 h-1 rounded-full bg-border" />
+            <span className="capitalize text-primary font-bold">{DISEASE}</span>
             {classifier?.version && (
-              <span className="px-2 py-0.5 rounded-md bg-muted text-[10px] font-mono text-muted-foreground">
-                v{classifier.version}
-              </span>
+              <>
+                <span className="w-1 h-1 rounded-full bg-border" />
+                <span className="bg-muted px-2 py-0.5 rounded-md font-mono text-[11px]">v{classifier.version}</span>
+              </>
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2 self-start sm:self-auto">
-          <Button variant="outline" onClick={fetchClassifier} className="h-9 px-3 rounded-xl text-sm font-bold gap-2">
-            <RefreshCw className="w-3.5 h-3.5" />
+        <div className="flex items-center gap-3 self-start md:self-auto">
+          <Button
+            variant="outline"
+            onClick={fetchClassifier}
+            disabled={loading}
+            className="h-11 px-5 rounded-2xl font-black text-sm gap-2 border-border/60 hover:bg-muted transition-all active:scale-95 shadow-sm"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
           </Button>
           <Button
             onClick={() => { setActiveTab('types'); setDocTypeModal('new'); }}
-            className="h-9 px-4 rounded-xl text-sm font-bold gap-2 bg-primary hover:bg-primary/90 shadow-sm shadow-primary/20"
+            className="h-11 px-6 rounded-2xl font-black text-sm gap-2 bg-primary hover:bg-primary/90 shadow-xl shadow-primary/20 transition-all active:scale-95"
           >
-            <Plus className="w-3.5 h-3.5" /> Add Document Type
+            <Plus className="w-4 h-4" /> Add Doc Type
           </Button>
         </div>
       </div>
 
       {/* ── Error Banner ── */}
       {error && (
-        <div className="flex items-center gap-3 p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          <span className="flex-1">Failed to load classifier: {error}</span>
-          <button onClick={fetchClassifier} className="text-xs font-bold underline underline-offset-2 hover:opacity-70 shrink-0">Retry</button>
+        <div className="py-24 flex flex-col items-center gap-6 animate-in zoom-in-95">
+          <div className="w-20 h-20 bg-destructive/10 rounded-[2.5rem] flex items-center justify-center shadow-inner">
+            <AlertCircle className="w-10 h-10 text-destructive" />
+          </div>
+          <div className="text-center space-y-2">
+            <p className="font-black text-xl text-destructive">Connection Failed</p>
+            <p className="text-sm text-muted-foreground max-w-xs mx-auto font-medium">{error}</p>
+          </div>
+          <Button onClick={fetchClassifier} className="rounded-2xl px-8 h-12 font-black bg-destructive hover:bg-destructive/90 shadow-xl shadow-destructive/20 transition-all active:scale-95">
+            Retry Connection
+          </Button>
         </div>
       )}
 
       {/* ── Meta stats ── */}
       {!error && classifier && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
           {[
-            { label: 'Doc Types',    value: docTypes.length,               color: 'text-foreground'       },
-            { label: 'Active',       value: activeCount,                    color: 'text-emerald-500'      },
-            { label: 'Inactive',     value: docTypes.length - activeCount,  color: 'text-muted-foreground' },
-            { label: 'Last Updated', value: classifier.last_updated ?? '—', color: 'text-primary text-base' },
-          ].map(s => (
-            <div key={s.label} className="bg-card border border-border/50 rounded-2xl p-4">
-              <p className="text-[10px] font-bold text-muted-foreground/70 uppercase tracking-widest mb-1.5">{s.label}</p>
-              <p className={`text-2xl font-black leading-none ${s.color}`}>{s.value}</p>
-            </div>
+            { label: 'Document Types', value: docTypes.length,               icon: FileText, color: 'text-foreground', bg: 'bg-foreground/5' },
+            { label: 'Active Pipeline', value: activeCount,                    icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+            { label: 'Inactive Types',   value: docTypes.length - activeCount,  icon: AlertCircle, color: 'text-amber-500', bg: 'bg-amber-500/10' },
+            { label: 'Last Deployed',   value: classifier.last_updated ?? '—', icon: RefreshCw, color: 'text-primary', bg: 'bg-primary/10' },
+          ].map((s) => (
+            <Card key={s.label} className="border-2 border-border/40 rounded-[2rem] shadow-sm hover:shadow-md transition-all overflow-hidden relative group">
+              <div className={`absolute top-0 right-0 p-4 opacity-5 group-hover:scale-110 transition-transform duration-500 ${s.color}`}>
+                <s.icon className="w-16 h-16" />
+              </div>
+              <CardContent className="p-6">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground mb-3">{s.label}</p>
+                <p className={`text-3xl font-black tracking-tighter ${s.color} truncate`}>{s.value}</p>
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}

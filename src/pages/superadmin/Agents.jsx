@@ -2,11 +2,15 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Activity, Settings, X, Save, ChevronDown, ChevronUp,
   AlertCircle, CheckCircle2, RefreshCw, Bot,
-  UserCircle2, Layers3, ShieldCheck, Braces, Loader2
+  UserCircle2, Layers3, ShieldCheck, Braces, Loader2,
+  Layers, Map, Hash, AlertTriangle, Check
 } from 'lucide-react';
-import { Card, CardContent } from '../../components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Skeleton } from '../../components/ui/skeleton';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from '../../components/ui/dialog';
 import { useSelector } from 'react-redux';
 
 /* ─────────────────────────────────────────────
@@ -69,7 +73,6 @@ const PROMPT_FIELDS = [
 const ConfigureModal = ({ agentId, disease, userId, token, onClose, onSaved }) => {
   const [agent,      setAgent]      = useState(null);
   const [loading,    setLoading]    = useState(true);
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [saving,     setSaving]     = useState(false);
   const [error,      setError]      = useState(null);
   const [saveError,  setSaveError]  = useState(null);
@@ -131,55 +134,34 @@ const ConfigureModal = ({ agentId, disease, userId, token, onClose, onSaved }) =
   const toggleSection = (key) =>
     setExpanded(p => ({ ...p, [key]: !p[key] }));
 
-  /* trap Escape */
-  useEffect(() => {
-    const h = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  }, [onClose]);
-
   return (
-    <div
-      className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6"
-      onClick={onClose}
-    >
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-
-      {/* Panel */}
-      <div
-        className="relative w-full max-w-2xl max-h-[88vh] flex flex-col bg-background border border-border/60 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* ── Header ── */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border/50 bg-muted/20 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-primary/10">
-              <Settings className="w-4 h-4 text-primary" />
-            </div>
-            <div>
-              <p className="font-bold text-sm">
-                {loading
-                  ? 'Loading agent…'
-                  : `Configure · ${agent?.agent_name ?? `Agent ${agentId}`}`}
-              </p>
-              <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-widest mt-0.5">
-                ID #{agentId} · {disease}
-              </p>
-            </div>
+    <Dialog open={true} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-2xl rounded-3xl p-0 overflow-hidden flex flex-col max-h-[90vh] border-none shadow-2xl">
+        {/* Header */}
+        <div className="px-8 pt-8 pb-6 border-b border-border/40 shrink-0 relative overflow-hidden"
+          style={{ background: 'linear-gradient(135deg, hsl(var(--primary)/0.08) 0%, transparent 100%)' }}>
+          <div className="absolute top-0 right-0 p-8 opacity-5">
+            <Settings className="w-24 h-24" />
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-muted/60 transition-colors text-muted-foreground hover:text-foreground"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <DialogHeader className="relative z-10">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-primary/15 text-primary flex items-center justify-center shadow-inner shrink-0">
+                <Settings className="w-6 h-6" />
+              </div>
+              <div>
+                <DialogTitle className="font-black text-xl tracking-tight">
+                  {loading ? 'Loading agent…' : `Configure — ${agent?.agent_name ?? `Agent ${agentId}`}`}
+                </DialogTitle>
+                <p className="text-sm text-muted-foreground font-medium mt-0.5">
+                  ID #{agentId} · {disease}
+                </p>
+              </div>
+            </div>
+          </DialogHeader>
         </div>
 
-        {/* ── Body ── */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-3">
-
-          {/* Loading state */}
+        {/* Body */}
+        <div className="px-8 py-6 flex-1 overflow-y-auto space-y-4">
           {loading && (
             <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -187,92 +169,89 @@ const ConfigureModal = ({ agentId, disease, userId, token, onClose, onSaved }) =
             </div>
           )}
 
-          {/* Error state */}
           {!loading && error && (
-            <div className="flex items-center gap-3 p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm">
+            <div className="flex items-center gap-3 p-4 bg-destructive/10 border border-destructive/20 rounded-2xl text-destructive text-sm font-bold">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>Failed to load agent: {error}</span>
             </div>
           )}
 
-          {/* Content */}
           {!loading && !error && (
             <>
-              {/* Success / Save error banners */}
               {saved && (
-                <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-600 dark:text-emerald-400 text-sm font-medium">
+                <div className="flex items-center gap-2 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-emerald-600 dark:text-emerald-400 text-sm font-bold animate-in fade-in duration-300">
                   <CheckCircle2 className="w-4 h-4 shrink-0" />
                   Agent updated successfully!
                 </div>
               )}
               {saveError && (
-                <div className="flex items-center gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm font-medium">
+                <div className="flex items-center gap-2 p-4 bg-destructive/10 border border-destructive/20 rounded-2xl text-destructive text-sm font-bold animate-in shake duration-300">
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   Save failed: {saveError}
                 </div>
               )}
 
-              {/* Accordion sections */}
-              {PROMPT_FIELDS.map(({ key, label, Icon, accent, bg }) => (
-                <div key={key} className="border border-border/40 rounded-xl overflow-hidden">
-                  <button
-                    className="w-full flex items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors text-left"
-                    onClick={() => toggleSection(key)}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className={`p-1.5 rounded-lg ${bg}`}>
-                        <Icon className={`w-3.5 h-3.5 ${accent}`} />
+              <div className="space-y-3">
+                {PROMPT_FIELDS.map(({ key, label, Icon, accent, bg }) => (
+                  <div key={key} className="border border-border/40 rounded-2xl overflow-hidden bg-card transition-all">
+                    <button
+                      className="w-full flex items-center justify-between px-5 py-4 bg-muted/20 hover:bg-muted/40 transition-colors text-left"
+                      onClick={() => toggleSection(key)}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-xl ${bg}`}>
+                          <Icon className={`w-4 h-4 ${accent}`} />
+                        </div>
+                        <span className="text-sm font-black">{label}</span>
+                        {edits[key] && (
+                          <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                            edited
+                          </span>
+                        )}
                       </div>
-                      <span className="text-sm font-bold">{label}</span>
-                      {edits[key] && (
-                        <span className="text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
-                          edited
-                        </span>
-                      )}
-                    </div>
-                    {expanded[key]
-                      ? <ChevronUp className="w-4 h-4 text-muted-foreground" />
-                      : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-                  </button>
-                  {expanded[key] && (
-                    <div className="p-3 bg-background">
-                      <textarea
-                        rows={6}
-                        className="w-full text-xs font-mono bg-muted/20 border border-border/40 rounded-lg p-3 text-foreground resize-y focus:outline-none focus:ring-2 focus:ring-primary/40 placeholder:text-muted-foreground/40 transition-all leading-relaxed"
-                        value={edits[key] ?? ''}
-                        onChange={e => setEdits(p => ({ ...p, [key]: e.target.value }))}
-                        placeholder={`Enter ${label.toLowerCase()}…`}
-                      />
-                    </div>
-                  )}
-                </div>
-              ))}
+                      <div className={`transition-transform duration-300 ${expanded[key] ? 'rotate-180' : ''}`}>
+                        <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                      </div>
+                    </button>
+                    {expanded[key] && (
+                      <div className="p-4 bg-background animate-in slide-in-from-top-2 duration-300">
+                        <textarea
+                          rows={6}
+                          className="w-full text-xs font-mono bg-muted/10 border border-border/40 rounded-xl p-4 text-foreground resize-none focus:outline-none focus:ring-4 focus:ring-primary/5 focus:border-primary/40 placeholder:text-muted-foreground/30 transition-all leading-relaxed"
+                          value={edits[key] ?? ''}
+                          onChange={e => setEdits(p => ({ ...p, [key]: e.target.value }))}
+                          placeholder={`Enter ${label.toLowerCase()}…`}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </>
           )}
         </div>
 
-        {/* ── Footer ── */}
+        {/* Footer */}
         {!loading && !error && (
-          <div className="flex items-center justify-between px-6 py-4 border-t border-border/50 bg-muted/10 shrink-0">
+          <div className="px-8 py-6 border-t border-border/40 bg-muted/10 flex justify-between items-center shrink-0">
             <button
               onClick={onClose}
-              className="text-sm text-muted-foreground hover:text-foreground font-medium transition-colors"
+              className="text-sm font-black text-muted-foreground hover:text-foreground transition-colors px-2"
             >
               Cancel
             </button>
             <Button
               onClick={handleSave}
               disabled={saving}
-              className="h-9 px-5 rounded-xl text-sm font-bold gap-2 bg-primary hover:bg-primary/90 shadow-sm shadow-primary/20"
+              className="rounded-2xl font-black text-sm h-12 px-8 bg-primary hover:bg-primary/90 shadow-xl shadow-primary/25 gap-2 transition-all active:scale-95"
             >
-              {saving
-                ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…</>
-                : <><Save className="w-3.5 h-3.5" /> Save Changes</>}
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              {saving ? 'Saving…' : 'Save Changes'}
             </Button>
           </div>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 
@@ -479,57 +458,67 @@ const SuperAdminAgents = () => {
       )}
 
       {/* ── Header ── */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-        <div className="space-y-1.5">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-[10px] font-bold uppercase tracking-widest">
-            <Activity className="w-3.5 h-3.5" />
-            Agent Management
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div className="space-y-3">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-[10px] font-black uppercase tracking-[0.2em] shadow-sm">
+            <Activity className="w-3.5 h-3.5" /> Agent Management
           </div>
-          <h1 className="text-2xl font-black tracking-tight">Extraction Agents</h1>
-          <div className="flex items-center gap-2">
-            <p className="text-muted-foreground text-sm">Configure and monitor AI extraction agents</p>
-            <span className="px-2 py-0.5 rounded-md bg-muted text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-              {DISEASE}
-            </span>
+          <h1 className="text-3xl font-black tracking-tight">
+            Extraction Agents
+          </h1>
+          <div className="flex items-center gap-3 text-muted-foreground text-sm font-medium">
+            <span>Configure and monitor AI extraction agents</span>
+            <span className="w-1 h-1 rounded-full bg-border" />
+            <span className="capitalize text-primary font-bold">{DISEASE}</span>
           </div>
         </div>
-        <Button
-          onClick={fetchAgents}
-          variant="outline"
-          className="h-9 px-4 rounded-xl text-sm font-bold gap-2 self-start sm:self-auto"
-        >
-          <RefreshCw className="w-3.5 h-3.5" /> Refresh
-        </Button>
+        <div className="flex items-center gap-3 self-start md:self-auto">
+          <Button
+            variant="outline"
+            onClick={fetchAgents}
+            disabled={pageLoading}
+            className="h-11 px-5 rounded-2xl font-black text-sm gap-2 border-border/60 hover:bg-muted transition-all active:scale-95 shadow-sm"
+          >
+            <RefreshCw className={`w-4 h-4 ${pageLoading ? 'animate-spin' : ''}`} />
+            Refresh Data
+          </Button>
+        </div>
       </div>
 
       {/* ── Error Banner ── */}
       {pageError && (
-        <div className="flex items-center gap-3 p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          <span className="flex-1">Failed to load agents: {pageError}</span>
-          <button
-            onClick={fetchAgents}
-            className="text-xs font-bold underline underline-offset-2 hover:opacity-70 shrink-0"
-          >
-            Retry
-          </button>
+        <div className="py-24 flex flex-col items-center gap-6 animate-in zoom-in-95">
+          <div className="w-20 h-20 bg-destructive/10 rounded-[2.5rem] flex items-center justify-center shadow-inner">
+            <AlertCircle className="w-10 h-10 text-destructive" />
+          </div>
+          <div className="text-center space-y-2">
+            <p className="font-black text-xl text-destructive">Connection Failed</p>
+            <p className="text-sm text-muted-foreground max-w-xs mx-auto font-medium">{pageError}</p>
+          </div>
+          <Button onClick={fetchAgents} className="rounded-2xl px-8 h-12 font-black bg-destructive hover:bg-destructive/90 shadow-xl shadow-destructive/20 transition-all active:scale-95">
+            Retry Connection
+          </Button>
         </div>
       )}
 
       {/* ── Stats ── */}
       {!pageError && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
           {[
-            { label: 'Total Agents', value: agents.length,               color: 'text-foreground'       },
-            { label: 'Active',       value: activeCount,                  color: 'text-emerald-500'      },
-            { label: 'Inactive',     value: agents.length - activeCount,  color: 'text-muted-foreground' },
-          ].map(s => (
-            <div key={s.label} className="bg-card border border-border/50 rounded-2xl p-4">
-              <p className="text-[10px] font-bold text-muted-foreground/70 uppercase tracking-widest mb-1.5">
-                {s.label}
-              </p>
-              <p className={`text-2xl font-black ${s.color}`}>{s.value}</p>
-            </div>
+            { label: 'Total Agents', value: agents.length,               icon: Bot,     color: 'text-foreground', bg: 'bg-foreground/5' },
+            { label: 'Active Pipeline', value: activeCount,               icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+            { label: 'Inactive Agents', value: agents.length - activeCount,  icon: AlertCircle, color: 'text-amber-500', bg: 'bg-amber-500/10' },
+            { label: 'System Status',   value: 'Optimal',                icon: Activity, color: 'text-primary', bg: 'bg-primary/10' },
+          ].map((s) => (
+            <Card key={s.label} className="border-2 border-border/40 rounded-[2rem] shadow-sm hover:shadow-md transition-all overflow-hidden relative group">
+              <div className={`absolute top-0 right-0 p-4 opacity-5 group-hover:scale-110 transition-transform duration-500 ${s.color}`}>
+                <s.icon className="w-16 h-16" />
+              </div>
+              <CardContent className="p-6">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground mb-3">{s.label}</p>
+                <p className={`text-3xl font-black tracking-tighter ${s.color}`}>{s.value}</p>
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}

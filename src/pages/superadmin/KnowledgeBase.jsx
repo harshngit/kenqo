@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import {
-  Upload, ArrowUpRight, FileText, ChevronDown, Activity
+  Upload, ArrowUpRight, FileText, ChevronDown, Activity,
+  BookOpen, CheckCircle2, AlertCircle, Layers, Settings2, RefreshCw
 } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
+import { Button } from '../../components/ui/button';
 
 // ─── Mock Data ────────────────────────────────────────────────────────────────
 const pendingRules = [
@@ -45,65 +48,89 @@ const SuperAdminKnowledgeBase = () => {
   const [selectedDisease, setSelectedDisease] = useState('Lymphedema');
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      {/* ── Top Bar ── */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-foreground tracking-tight">Knowledge Base Dashboard</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {selectedDisease} · Medicare FFS · <span className="text-muted-foreground/70">Last updated 2 hours ago</span>
-          </p>
+    <div className="space-y-8 animate-in fade-in duration-500 pb-12">
+      {/* ── Header ── */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div className="space-y-3">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-[10px] font-black uppercase tracking-[0.2em] shadow-sm">
+            <BookOpen className="w-3.5 h-3.5" /> Intelligence Repository
+          </div>
+          <h1 className="text-3xl font-black tracking-tight">
+            Knowledge Base
+          </h1>
+          <div className="flex items-center gap-3 text-muted-foreground text-sm font-medium">
+            <span className="capitalize text-primary font-bold">{selectedDisease}</span>
+            <span className="w-1 h-1 rounded-full bg-border" />
+            <span>Medicare FFS</span>
+            <span className="w-1 h-1 rounded-full bg-border" />
+            <span className="text-muted-foreground/60 italic">Updated 2h ago</span>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <button className="flex items-center gap-2 h-9 px-4 border border-border/60 bg-card rounded-lg text-sm font-medium hover:bg-accent transition-colors">
-            <span>{selectedDisease}</span>
-            <ChevronDown className="w-4 h-4 text-muted-foreground" />
-          </button>
-          <button className="flex items-center gap-2 h-9 px-4 bg-primary text-white rounded-lg text-sm font-bold hover:bg-primary/90 transition-colors shadow-sm shadow-primary/20">
-            <Upload className="w-4 h-4" />
-            Upload Document
-            <ArrowUpRight className="w-3.5 h-3.5 opacity-70" />
-          </button>
+        <div className="flex items-center gap-3 self-start md:self-auto">
+          <div className="relative group">
+            <button className="flex items-center gap-3 h-11 px-5 border-2 border-border/40 bg-card rounded-2xl text-sm font-black hover:border-primary/20 transition-all shadow-sm">
+              <span>{selectedDisease}</span>
+              <ChevronDown className="w-4 h-4 text-muted-foreground/60 group-hover:text-primary transition-colors" />
+            </button>
+          </div>
+          <Button className="h-11 px-6 rounded-2xl font-black text-sm gap-2 bg-primary hover:bg-primary/90 shadow-xl shadow-primary/20 transition-all active:scale-95">
+            <Upload className="w-4 h-4" /> Upload Document
+          </Button>
         </div>
       </div>
 
-      {/* ── Stats Row ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* ── Stats ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
         {[
-          { label: 'Total Rules',     value: 37, sub: 'from 1 document ingested',  subColor: '' },
-          { label: 'Pending Approval', value: 14, sub: 'requires review',           subColor: 'text-amber-500' },
-          { label: 'Approved Rules',   value: 21, sub: 'active in pipeline',        subColor: 'text-emerald-600' },
-          { label: 'Total Chunks',     value: 84, sub: 'across 1 document',         subColor: '' },
+          { label: 'Total Rules',     value: 37, icon: BookOpen, color: 'text-foreground', bg: 'bg-foreground/5' },
+          { label: 'Pending Review',  value: 14, icon: AlertCircle, color: 'text-amber-500', bg: 'bg-amber-500/10' },
+          { label: 'Active Pipeline', value: 21, icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+          { label: 'Vector Chunks',   value: 84, icon: Layers, color: 'text-primary', bg: 'bg-primary/10' },
         ].map((s) => (
-          <div key={s.label} className="bg-card border border-border/40 rounded-2xl p-6 shadow-sm">
-            <p className="text-xs text-muted-foreground font-semibold mb-2">{s.label}</p>
-            <p className="text-3xl font-black text-foreground tracking-tight">{s.value}</p>
-            <p className={`text-[11px] mt-2 font-medium ${s.subColor || 'text-muted-foreground/70'}`}>{s.sub}</p>
-          </div>
+          <Card key={s.label} className="border-2 border-border/40 rounded-[2rem] shadow-sm hover:shadow-md transition-all overflow-hidden relative group">
+            <div className={`absolute top-0 right-0 p-4 opacity-5 group-hover:scale-110 transition-transform duration-500 ${s.color}`}>
+              <s.icon className="w-16 h-16" />
+            </div>
+            <CardContent className="p-6">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground mb-3">{s.label}</p>
+              <p className={`text-3xl font-black tracking-tighter ${s.color}`}>{s.value}</p>
+            </CardContent>
+          </Card>
         ))}
       </div>
 
-      {/* ── Rules Section (Full Width) ── */}
-      <div className="bg-card border border-border/40 rounded-2xl overflow-hidden shadow-sm">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border/40">
-          <h2 className="text-sm font-bold text-foreground uppercase tracking-wider">Rules — pending review</h2>
-          <button className="text-xs text-primary font-bold hover:underline flex items-center gap-1">
-            View all <ArrowUpRight className="w-3 h-3" />
-          </button>
-        </div>
-        <div className="divide-y divide-border/30">
-          {pendingRules.map((rule) => (
-            <div key={rule.id} className="px-6 py-4 flex items-start gap-4 hover:bg-muted/30 transition-colors">
-              <span className="text-xs font-black text-muted-foreground/40 w-10 shrink-0 mt-1">{rule.id}</span>
-              <p className="flex-1 text-sm text-foreground/80 leading-relaxed">{rule.text}</p>
-              <div className="flex items-center gap-2 shrink-0">
-                <StatusBadge status={rule.status} />
-                <SeverityBadge severity={rule.severity} />
+      {/* ── Rules List ── */}
+      <Card className="border-2 border-border/40 rounded-[2.5rem] shadow-lg overflow-hidden transition-all duration-500 bg-card">
+        <CardHeader className="px-8 py-6 border-b-2 border-border/10 bg-muted/5">
+          <CardTitle className="text-sm font-black text-foreground uppercase tracking-widest flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-2xl bg-primary/10 text-primary">
+                <BookOpen className="w-5 h-5" />
               </div>
+              <span>Rules Pending Review</span>
             </div>
-          ))}
-        </div>
-      </div>
+            <button className="text-[10px] font-black uppercase tracking-widest text-primary hover:text-primary/80 flex items-center gap-1.5 transition-colors">
+              View Directory <ArrowUpRight className="w-4 h-4" />
+            </button>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="divide-y-2 divide-border/5">
+            {pendingRules.map((rule) => (
+              <div key={rule.id} className="px-8 py-5 flex items-start gap-6 hover:bg-primary/[0.02] transition-colors group">
+                <span className="text-[11px] font-black text-muted-foreground/30 w-10 shrink-0 mt-1.5 transition-colors group-hover:text-primary/40 font-mono">
+                  {rule.id}
+                </span>
+                <p className="flex-1 text-sm text-foreground/70 leading-relaxed font-medium mt-0.5">{rule.text}</p>
+                <div className="flex items-center gap-3 shrink-0 pt-0.5">
+                  <StatusBadge status={rule.status} />
+                  <SeverityBadge severity={rule.severity} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };

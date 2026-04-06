@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Layers, Search, Filter, ChevronRight, FileText, Hash, Copy, Eye } from 'lucide-react';
+import { Layers, Search, Filter, ChevronRight, FileText, Hash, Copy, Eye, Activity, CheckCircle2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import { Button } from '../../components/ui/button';
@@ -30,77 +30,102 @@ const SuperAdminChunks = () => {
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-        <div className="space-y-1.5">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-[10px] font-bold uppercase tracking-widest">
-            <Layers className="w-3.5 h-3.5" />
-            Document Chunks
+    <div className="space-y-8 animate-in fade-in duration-500 pb-12">
+      {/* ── Header ── */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div className="space-y-3">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-[10px] font-black uppercase tracking-[0.2em] shadow-sm">
+            <Layers className="w-3.5 h-3.5" /> Intelligence Fragmentation
           </div>
-          <h1 className="text-2xl font-black tracking-tight">Chunks</h1>
-          <p className="text-muted-foreground text-sm">Semantic chunks extracted from ingested policy documents</p>
+          <h1 className="text-3xl font-black tracking-tight">
+            Document Chunks
+          </h1>
+          <p className="text-muted-foreground text-sm font-medium">
+            Analyze and monitor semantic fragments from ingested policy documents
+          </p>
         </div>
-        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground bg-card border border-border/50 px-4 py-2 rounded-xl">
-          <Hash className="w-4 h-4 text-primary" />
-          <span className="font-black text-foreground">{chunksData.length}</span> total chunks
+        <div className="flex items-center gap-3 self-start md:self-auto">
+          <div className="flex items-center gap-3 px-5 py-2.5 rounded-2xl bg-card border-2 border-border/40 shadow-sm group hover:border-primary/20 transition-all">
+            <Hash className="w-4 h-4 text-primary group-hover:scale-110 transition-transform" />
+            <span className="text-sm font-black tracking-tight"><span className="text-primary">{chunksData.length}</span> Total Chunks</span>
+          </div>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      {/* ── Stats ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
         {[
-          { label: 'Total Chunks',    value: 84,    color: 'text-primary',    bg: 'bg-primary/10' },
-          { label: 'Avg Tokens',      value: 46,    color: 'text-primary',    bg: 'bg-primary/10' },
-          { label: 'Documents',       value: 1,     color: 'text-primary',    bg: 'bg-primary/10' },
-          { label: 'Avg Similarity',  value: '0.91',color: 'text-primary',    bg: 'bg-primary/10' },
-        ].map(s => (
-          <div key={s.label} className="bg-card border border-border/50 rounded-xl p-4 hover:shadow-sm transition-shadow">
-            <p className="text-[10px] font-bold text-muted-foreground/70 uppercase tracking-widest mb-2">{s.label}</p>
-            <p className={`text-2xl font-black ${s.color}`}>{s.value}</p>
-          </div>
+          { label: 'Active Chunks',  value: 84,    icon: Layers, color: 'text-foreground', bg: 'bg-foreground/5' },
+          { label: 'Avg Token Size',  value: 46,    icon: Hash,   color: 'text-primary',    bg: 'bg-primary/10' },
+          { label: 'Source Docs',     value: 1,     icon: FileText, color: 'text-violet-500', bg: 'bg-violet-500/10' },
+          { label: 'Avg Similarity',  value: '91%', icon: Activity, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+        ].map((s) => (
+          <Card key={s.label} className="border-2 border-border/40 rounded-[2rem] shadow-sm hover:shadow-md transition-all overflow-hidden relative group">
+            <div className={`absolute top-0 right-0 p-4 opacity-5 group-hover:scale-110 transition-transform duration-500 ${s.color}`}>
+              <s.icon className="w-16 h-16" />
+            </div>
+            <CardContent className="p-6">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground mb-3">{s.label}</p>
+              <p className={`text-3xl font-black tracking-tighter ${s.color}`}>{s.value}</p>
+            </CardContent>
+          </Card>
         ))}
       </div>
 
-      {/* Search */}
-      <Card className="border border-border/50 shadow-sm rounded-xl bg-card/50 overflow-hidden">
-        <CardContent className="p-4">
-          <div className="relative group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
-            <Input
-              placeholder="Search chunks by content, ID, or document..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-11 h-11 bg-background/50 border-border/50 focus:border-primary/50 rounded-xl transition-all"
-            />
-          </div>
-        </CardContent>
-      </Card>
+      {/* ── Search ── */}
+      <div className="relative group max-w-2xl">
+        <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground group-focus-within:text-primary transition-all duration-300" />
+        <Input
+          placeholder="Search chunks by content, ID, or document reference..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-14 h-14 bg-card border-2 border-border/40 focus:border-primary/40 rounded-[1.25rem] transition-all shadow-sm focus:shadow-md text-sm font-medium placeholder:text-muted-foreground/40"
+        />
+      </div>
 
-      {/* Chunks List */}
-      <div className="space-y-3">
+      {/* ── Chunks List ── */}
+      <div className="space-y-4">
         {filtered.map((chunk) => (
-          <div key={chunk.id} className="group bg-card border border-border/50 rounded-xl p-5 hover:border-purple-200 dark:hover:border-purple-500/30 hover:shadow-sm transition-all">
-            <div className="flex items-start justify-between gap-4 mb-3">
-              <div className="flex items-center gap-2.5">
-                <span className="text-xs font-black text-purple-600 dark:text-purple-400 bg-purple-500/10 px-2.5 py-1 rounded-lg">{chunk.id}</span>
-                <span className="text-[11px] font-bold text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-md">{chunk.docId}</span>
-                <span className="text-[10px] font-semibold text-muted-foreground/60">Page {chunk.page}</span>
+          <div key={chunk.id} className="group bg-card border-2 border-border/40 rounded-[2rem] p-6 hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 shadow-sm">
+            <div className="flex items-start justify-between gap-6 mb-5">
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="text-[10px] font-black text-primary bg-primary/10 px-3 py-1.5 rounded-xl border border-primary/20 shadow-sm tracking-widest uppercase">{chunk.id}</span>
+                <span className="text-[10px] font-black text-muted-foreground/60 bg-muted/50 px-3 py-1.5 rounded-xl border border-border/40 tracking-widest uppercase">{chunk.docId}</span>
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-muted/30 border border-border/40 text-[10px] font-black uppercase tracking-widest text-muted-foreground/40">
+                  Page {chunk.page}
+                </div>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="text-[10px] font-bold text-blue-500 bg-blue-500/10 px-2 py-0.5 rounded-md">{chunk.tokens} tokens</span>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${chunk.similarity > 0.93 ? 'text-emerald-600 bg-emerald-500/10' : chunk.similarity > 0.88 ? 'text-amber-600 bg-amber-500/10' : 'text-muted-foreground bg-muted/50'}`}>
-                  {(chunk.similarity * 100).toFixed(0)}% sim
-                </span>
+              <div className="flex items-center gap-3 shrink-0">
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-violet-500/10 text-violet-600 border border-violet-500/20 text-[10px] font-black uppercase tracking-widest shadow-sm">
+                  <Hash className="w-3.5 h-3.5" />
+                  {chunk.tokens} Tokens
+                </div>
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-widest shadow-sm ${
+                  chunk.similarity > 0.93 
+                    ? 'text-emerald-600 bg-emerald-500/10 border-emerald-500/20' 
+                    : chunk.similarity > 0.88 
+                      ? 'text-amber-600 bg-amber-500/10 border-amber-500/20' 
+                      : 'text-muted-foreground bg-muted/50 border-border/40'
+                }`}>
+                  <Activity className="w-3.5 h-3.5" />
+                  {(chunk.similarity * 100).toFixed(0)}% Similarity
+                </div>
                 <button
                   onClick={() => handleCopy(chunk.id, chunk.text)}
-                  className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                  className="w-10 h-10 flex items-center justify-center rounded-xl bg-muted/50 hover:bg-primary/10 transition-all text-muted-foreground hover:text-primary border border-border/40 hover:border-primary/20 active:scale-95 group/copy"
                 >
-                  <Copy className={`w-3.5 h-3.5 ${copied === chunk.id ? 'text-emerald-500' : ''}`} />
+                  {copied === chunk.id ? (
+                    <CheckCircle2 className="w-5 h-5 text-emerald-500 animate-in zoom-in" />
+                  ) : (
+                    <Copy className="w-5 h-5 group-hover/copy:scale-110 transition-transform" />
+                  )}
                 </button>
               </div>
             </div>
-            <p className="text-sm text-foreground/80 leading-relaxed">{chunk.text}</p>
+            <div className="relative">
+              <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary/10 rounded-full group-hover:bg-primary/30 transition-colors" />
+              <p className="text-sm text-foreground/70 leading-relaxed font-medium pl-6">{chunk.text}</p>
+            </div>
           </div>
         ))}
       </div>
