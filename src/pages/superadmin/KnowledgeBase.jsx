@@ -25,7 +25,7 @@ const StatusBadge = ({ status }) => {
     merge_suggestion: 'bg-violet-500/10 text-violet-600 border border-violet-500/20',
   };
   return (
-    <span className={`text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest shadow-sm ${map[status] || map.pending}`}>
+    <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest ${map[status] || map.pending}`}>
       {status.replace('_', ' ')}
     </span>
   );
@@ -39,7 +39,7 @@ const SeverityBadge = ({ severity }) => {
     PASS:   'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20',
   };
   return (
-    <span className={`text-[10px] font-black px-2 py-0.5 rounded-md tracking-wider border shadow-sm ${map[s] || map.RED}`}>
+    <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest ${map[s] || map.RED}`}>
       {s}
     </span>
   );
@@ -49,237 +49,118 @@ const SeverityBadge = ({ severity }) => {
 const RuleDetailModal = ({ open, rule, onClose, onApprove, onEdit, onDelete }) => {
   if (!open || !rule) return null;
 
-  const Section = ({ icon: Icon, title, color = 'text-primary', children }) => (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <div className={`p-1.5 rounded-xl bg-primary/10 ${color}`}>
-          <Icon className="w-3.5 h-3.5" />
+  const Section = ({ icon: Icon, title, children }) => (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+          <Icon className="w-4 h-4" />
         </div>
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">{title}</p>
+        <p className="text-[11px] font-black uppercase tracking-[0.2em] text-muted-foreground/80">{title}</p>
       </div>
       {children}
     </div>
   );
 
-  const InfoRow = ({ label, value, mono = false }) => (
-    <div className="flex items-start justify-between gap-4 py-2.5 border-b border-border/20 last:border-0">
-      <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 shrink-0 mt-0.5">{label}</span>
-      <span className={`text-xs font-bold text-foreground/80 text-right max-w-[60%] break-words ${mono ? 'font-mono text-[11px]' : ''}`}>
-        {value ?? '—'}
-      </span>
+  const InfoRow = ({ label, value }) => (
+    <div className="flex items-center justify-between py-3.5 border-b border-border/10 last:border-0">
+      <span className="text-[11px] font-black uppercase tracking-[0.15em] text-muted-foreground/50">{label}</span>
+      <span className="text-xs font-black text-foreground/90">{value ?? '—'}</span>
     </div>
   );
 
-  const hcpcs = rule.applicable_hcpcs || [];
-  const showAllHcpcs = hcpcs.length <= 6 || hcpcs[0] === 'ALL';
-
   return (
-    <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-card border-2 border-border/40 rounded-t-[2.5rem] md:rounded-[2.5rem] w-full max-w-2xl shadow-2xl animate-in slide-in-from-bottom-4 md:zoom-in-95 duration-300 max-h-[92vh] flex flex-col">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-card border-2 border-border/40 rounded-[2.5rem] w-full max-w-2xl shadow-2xl animate-in zoom-in-95 duration-300 max-h-[90vh] flex flex-col overflow-hidden">
+        
+        {/* Header with Tags & Title */}
+        <div className="px-10 pt-10 pb-6 relative">
+          <button
+            onClick={onClose}
+            className="absolute top-8 right-8 w-10 h-10 rounded-full border border-border/60 flex items-center justify-center hover:bg-muted transition-all active:scale-95"
+          >
+            <X className="w-5 h-5" />
+          </button>
 
-        {/* ── Sticky Header ── */}
-        <div className="flex items-start justify-between px-8 pt-7 pb-5 border-b-2 border-border/10 shrink-0">
-          <div className="space-y-2 flex-1 min-w-0 pr-4">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="text-[10px] font-black font-mono text-primary/60 bg-primary/5 border border-primary/10 px-2.5 py-1 rounded-lg">{rule.rule_id}</span>
+          <div className="space-y-4">
+            <div className="flex items-center gap-2.5">
+              <span className="text-[10px] font-black text-primary/60 bg-primary/5 border border-primary/20 px-3 py-1 rounded-full uppercase tracking-widest">
+                {rule.rule_id}
+              </span>
               <StatusBadge status={rule.status} />
               {rule.on_fail && <SeverityBadge severity={rule.on_fail.verdict} />}
-              {rule.llm_judgement && (
-                <span className="text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest bg-violet-500/10 text-violet-600 border border-violet-500/20">
-                  LLM Judge
-                </span>
-              )}
             </div>
-            <h2 className="text-xl font-black tracking-tight capitalize leading-snug">
+            <h2 className="text-3xl font-black tracking-tight text-foreground">
               {rule.rule_name?.replace(/_/g, ' ')}
             </h2>
-            <p className="text-sm text-muted-foreground font-medium leading-relaxed">
+            <p className="text-sm text-muted-foreground font-medium leading-relaxed max-w-[90%]">
               {rule.description}
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="w-10 h-10 rounded-2xl border-2 border-border/40 flex items-center justify-center hover:bg-muted transition-all active:scale-95 shrink-0 mt-1"
-          >
-            <X className="w-4 h-4" />
-          </button>
         </div>
 
-        {/* ── Scrollable Body ── */}
-        <div className="overflow-y-auto flex-1 px-8 py-6 space-y-7">
-
-          {/* Check Type & Field */}
-          <Section icon={Code2} title="Rule Configuration">
-            <div className="bg-muted/20 rounded-3xl border-2 border-border/30 divide-y divide-border/20 overflow-hidden">
-              <InfoRow label="Check Type" value={rule.check_type} mono />
-              <InfoRow label="Field" value={rule.field} mono />
-              <InfoRow label="LLM Judgement" value={rule.llm_judgement ? 'Yes' : 'No'} />
-              <InfoRow label="Body Area Specific" value={rule.body_area_specific ? 'Yes' : 'No'} />
-              {rule.precondition && <InfoRow label="Precondition" value={rule.precondition} mono />}
-            </div>
-          </Section>
-
-          {/* Stored Message */}
-          {rule.stored_message && (
-            <Section icon={Info} title="Stored Message">
-              <div className="bg-muted/20 rounded-3xl border-2 border-border/30 p-4">
-                <p className="text-sm font-medium text-foreground/70 leading-relaxed">{rule.stored_message}</p>
-              </div>
-            </Section>
-          )}
-
-          {/* Parameters */}
-          {rule.parameters && Object.keys(rule.parameters).length > 0 && (
-            <Section icon={Settings2} title="Parameters">
-              <div className="bg-muted/20 rounded-3xl border-2 border-border/30 p-5 overflow-x-auto">
-                <pre className="text-xs font-mono text-foreground/70 whitespace-pre-wrap break-words">
-                  {JSON.stringify(rule.parameters, null, 2)}
-                </pre>
-              </div>
-            </Section>
-          )}
-
-          {/* On Pass / On Fail */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* On Pass */}
-            {rule.on_pass && (
-              <div className="p-5 rounded-3xl bg-emerald-500/5 border-2 border-emerald-500/15 space-y-3">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                  <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600">On Pass</p>
-                </div>
-                <div className="space-y-2">
-                  <span className="text-[9px] font-black uppercase tracking-widest text-emerald-500/60">Verdict</span>
-                  <p className="text-sm font-black text-emerald-600">{rule.on_pass.verdict}</p>
-                  {rule.on_pass.message && (
-                    <>
-                      <span className="text-[9px] font-black uppercase tracking-widest text-emerald-500/60 block mt-2">Message</span>
-                      <p className="text-xs font-medium text-foreground/70 leading-relaxed">{rule.on_pass.message}</p>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* On Fail */}
-            {rule.on_fail && (
-              <div className="p-5 rounded-3xl bg-red-500/5 border-2 border-red-500/15 space-y-3">
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-red-500" />
-                  <p className="text-[10px] font-black uppercase tracking-widest text-red-600">On Fail</p>
-                </div>
-                <div className="space-y-2">
-                  <span className="text-[9px] font-black uppercase tracking-widest text-red-500/60">Verdict</span>
-                  <p className="text-sm font-black text-red-600">{rule.on_fail.verdict}</p>
-                  {(rule.on_fail.carc || rule.on_fail.rarc) && (
-                    <div className="flex gap-3 mt-1">
-                      {rule.on_fail.carc && (
-                        <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-1.5 text-center">
-                          <p className="text-[8px] font-black uppercase text-red-400">CARC</p>
-                          <p className="text-sm font-black text-red-600">{rule.on_fail.carc}</p>
-                        </div>
-                      )}
-                      {rule.on_fail.rarc && (
-                        <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-1.5 text-center">
-                          <p className="text-[8px] font-black uppercase text-red-400">RARC</p>
-                          <p className="text-sm font-black text-red-600">{rule.on_fail.rarc}</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {rule.on_fail.message && (
-                    <>
-                      <span className="text-[9px] font-black uppercase tracking-widest text-red-500/60 block mt-2">Message</span>
-                      <p className="text-xs font-medium text-foreground/70 leading-relaxed">{rule.on_fail.message}</p>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* HCPCS Codes */}
-          <Section icon={Hash} title={`Applicable HCPCS (${hcpcs.length})`}>
-            <div className="flex flex-wrap gap-2">
-              {hcpcs[0] === 'ALL' ? (
-                <span className="px-4 py-2 rounded-2xl bg-primary/10 text-primary border border-primary/20 text-xs font-black tracking-wider">
-                  ALL HCPCS Codes
-                </span>
-              ) : (
-                hcpcs.map((code) => (
-                  <span key={code} className="px-3 py-1.5 rounded-xl bg-muted/40 border border-border/40 text-xs font-mono font-bold text-foreground/70">
-                    {code}
-                  </span>
-                ))
-              )}
-            </div>
-          </Section>
-
-          {/* Relevance Tags */}
-          {rule.relevance_tags?.length > 0 && (
-            <Section icon={Tag} title="Relevance Tags">
-              <div className="flex flex-wrap gap-2">
-                {rule.relevance_tags.map((tag) => (
-                  <span key={tag} className="px-3 py-1.5 rounded-xl bg-muted/30 border border-border/30 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                    {tag.replace(/_/g, ' ')}
-                  </span>
-                ))}
-              </div>
-            </Section>
-          )}
-
-          {/* Source Text */}
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto px-10 py-6 space-y-10 scrollbar-none">
+          
+          {/* Source Text Section */}
           {rule.source_text && (
             <Section icon={FileText} title="Source Text">
-              <div className="bg-muted/20 rounded-3xl border-2 border-border/30 p-5 relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-1 h-full bg-primary/30 rounded-l-3xl" />
-                <p className="text-xs font-medium text-foreground/60 leading-relaxed pl-4 italic">
+              <div className="p-8 rounded-[2rem] bg-muted/10 border-l-4 border-primary/30 relative">
+                <p className="text-sm font-medium text-foreground/70 leading-relaxed italic">
                   "{rule.source_text}"
                 </p>
               </div>
             </Section>
           )}
 
-          {/* Metadata */}
+          {/* Metadata Section */}
           <Section icon={Database} title="Metadata">
-            <div className="bg-muted/20 rounded-3xl border-2 border-border/30 divide-y divide-border/20 overflow-hidden">
-              <InfoRow label="Source Doc" value={rule.source_doc} mono />
+            <div className="px-1">
+              <InfoRow label="Source Doc" value={rule.source_doc} />
               <InfoRow label="Disease" value={rule.disease} />
               <InfoRow label="Source" value={rule.source?.replace(/_/g, ' ')} />
-              <InfoRow label="Chunk IDs" value={rule.linked_chunk_ids?.join(', ')} mono />
+              <InfoRow label="Chunk IDs" value={rule.linked_chunk_ids?.join(', ')} />
               <InfoRow label="Is Merge" value={rule.is_merge ? 'Yes' : 'No'} />
-              {rule.merged_from?.length > 0 && (
-                <InfoRow label="Merged From" value={rule.merged_from.join(', ')} mono />
-              )}
-              <InfoRow label="Created" value={new Date(rule.created_at).toLocaleString()} />
-              <InfoRow label="Updated" value={new Date(rule.updated_at).toLocaleString()} />
             </div>
+          </Section>
+
+          {/* Rule Configuration (Optional - keeping some existing details) */}
+          <Section icon={Code2} title="Configuration">
+             <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 rounded-2xl bg-muted/20 border border-border/40">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-1">Check Type</p>
+                  <p className="text-xs font-bold font-mono">{rule.check_type}</p>
+                </div>
+                <div className="p-4 rounded-2xl bg-muted/20 border border-border/40">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-1">Field</p>
+                  <p className="text-xs font-bold font-mono">{rule.field}</p>
+                </div>
+             </div>
           </Section>
         </div>
 
-        {/* ── Sticky Footer Actions ── */}
-        <div className="px-8 py-5 border-t-2 border-border/10 bg-muted/5 flex items-center gap-3 shrink-0">
+        {/* Footer Actions */}
+        <div className="px-10 py-8 border-t border-border/10 bg-muted/5 flex items-center gap-4">
           {rule.status === 'pending' && (
             <Button
               onClick={() => { onApprove(rule.rule_id); onClose(); }}
-              className="h-11 px-6 rounded-2xl font-black text-sm bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/20 transition-all active:scale-95"
+              className="h-12 px-8 rounded-2xl font-black text-sm bg-emerald-500 hover:bg-emerald-600 text-white shadow-xl shadow-emerald-500/20 transition-all active:scale-95 flex items-center gap-2"
             >
-              <CheckCircle2 className="w-4 h-4 mr-2" /> Approve
+              <Check className="w-4 h-4" /> Approve
             </Button>
           )}
           <Button
             onClick={() => { onEdit(rule); onClose(); }}
             variant="outline"
-            className="h-11 px-6 rounded-2xl font-black text-sm border-border/60 hover:bg-muted transition-all active:scale-95"
+            className="h-12 px-8 rounded-2xl font-black text-sm border-2 border-border/60 hover:bg-muted transition-all active:scale-95 flex items-center gap-2"
           >
-            <Edit2 className="w-4 h-4 mr-2" /> Edit Rule
+            <Edit2 className="w-4 h-4" /> Edit Rule
           </Button>
           <Button
             onClick={() => { onDelete([rule.rule_id]); onClose(); }}
             variant="outline"
-            className="h-11 px-5 rounded-2xl font-black text-sm border-red-500/20 text-red-500 hover:bg-red-500/10 transition-all active:scale-95 ml-auto"
+            className="h-12 px-6 rounded-2xl font-black text-sm border-2 border-red-500/20 text-red-500 hover:bg-red-500/10 transition-all active:scale-95 ml-auto flex items-center gap-2"
           >
-            <Trash2 className="w-4 h-4 mr-2" /> Delete
+            <Trash2 className="w-4 h-4" /> Delete
           </Button>
         </div>
       </div>
@@ -728,14 +609,14 @@ const SuperAdminKnowledgeBase = () => {
         </div>
         <div className="flex items-center gap-3 self-start md:self-auto">
           <div className="flex items-center gap-1 p-1 bg-muted/40 rounded-2xl border border-border/40">
-            {['pending', 'approved', 'disabled'].map((s) => (
+            {['pending', 'approved', 'merge_suggestion'].map((s) => (
               <button
                 key={s}
                 onClick={() => setStatusFilter(s)}
                 className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all
                   ${statusFilter === s ? 'bg-background text-primary shadow-sm border border-border/50' : 'text-muted-foreground hover:text-foreground'}`}
               >
-                {s}
+                {s.replace('_', ' ')}
               </button>
             ))}
           </div>

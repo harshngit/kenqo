@@ -4,7 +4,7 @@ import { Input } from '../../components/ui/input';
 import { Button } from '../../components/ui/button';
 import {
   FileText, Search, CheckCircle2, Clock, Users,
-  ArrowUpRight, Upload, Trash2, AlertCircle, X,
+  ArrowUpRight, Upload, Trash2, AlertCircle, X, Loader2, MessageSquare, Save, Edit2
 } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 
@@ -89,11 +89,80 @@ const DeleteConfirmDialog = ({ open, title, description, onConfirm, onCancel, lo
 // ─── UPLOAD MODAL ─────────────────────────────────────────────────────────────
 const UploadModal = ({ superAdminId, onClose, onUploaded }) => {
   const [file, setFile] = useState(null);
-  const [disease, setDisease] = useState('');
+  const [disease, setDisease] = useState('lymphedema');
   const [docType, setDocType] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const inputRef = useRef();
+
+  // Prompts integration
+  const [prompts, setPrompts] = useState({ chunk_summary: '', rules_extraction: '' });
+  const [isFetchingPrompts, setIsFetchingPrompts] = useState(false);
+  const [editMode, setEditMode] = useState({ chunk_summary: false, rules_extraction: false });
+
+  const fetchPrompts = useCallback(async () => {
+    if (!superAdminId) return;
+    setIsFetchingPrompts(true);
+    try {
+      const response = await fetch(`${BASE_URL}/admin/prompts/get`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': superAdminId,
+        },
+        body: JSON.stringify({
+          user_id: superAdminId,
+          prompt_names: ['chunk_summary', 'rules_extraction'],
+        }),
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setPrompts({
+          chunk_summary: data.prompts?.chunk_summary || '',
+          rules_extraction: data.prompts?.rules_extraction || '',
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch prompts', err);
+    } finally {
+      setIsFetchingPrompts(false);
+    }
+  }, [superAdminId]);
+
+  useEffect(() => {
+    fetchPrompts();
+  }, [fetchPrompts]);
+
+  const handleUpdatePrompt = async (key) => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${BASE_URL}/admin/prompts/update`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': superAdminId,
+        },
+        body: JSON.stringify({
+          user_id: superAdminId,
+          prompts: [
+            {
+              prompt_name: key,
+              prompt_text: prompts[key],
+            },
+          ],
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || data.success === false) {
+        throw new Error(data?.message || 'Update failed');
+      }
+      setEditMode((prev) => ({ ...prev, [key]: false }));
+    } catch (err) {
+      setError(`Prompt update failed: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!file || !disease.trim()) {
@@ -109,7 +178,7 @@ const UploadModal = ({ superAdminId, onClose, onUploaded }) => {
     try {
       const fd = new FormData();
       fd.append('file', file);
-      fd.append('disease', disease.trim());
+      fd.append('disease', disease.trim().toLowerCase());
       fd.append('user_id', superAdminId);
       if (docType.trim()) fd.append('doc_type', docType.trim());
 
@@ -131,81 +200,166 @@ const UploadModal = ({ superAdminId, onClose, onUploaded }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-card border-2 border-border/40 rounded-[2rem] p-8 w-full max-w-md shadow-2xl space-y-6 animate-in zoom-in-95 duration-200">
+      <div className="bg-card border-2 border-border/40 rounded-[2.5rem] p-8 w-full max-w-4xl shadow-2xl space-y-8 animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="space-y-1">
-            <h2 className="text-xl font-black tracking-tight">Upload Policy Document</h2>
-            <p className="text-xs text-muted-foreground font-medium">PDF files only</p>
+            <h2 className="text-2xl font-black tracking-tight">Upload Policy Document</h2>
+            <p className="text-sm text-muted-foreground font-medium">Ingest new intelligence with custom extraction prompts</p>
           </div>
-          <button onClick={onClose} className="w-9 h-9 rounded-xl border border-border/60 flex items-center justify-center hover:bg-muted transition-all active:scale-95">
-            <X className="w-4 h-4" />
+          <button onClick={onClose} className="w-10 h-10 rounded-2xl border-2 border-border/40 flex items-center justify-center hover:bg-muted transition-all active:scale-95 shrink-0">
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* File picker */}
-        <div
-          onClick={() => inputRef.current?.click()}
-          className="border-2 border-dashed border-border/60 hover:border-primary/40 rounded-[1.5rem] p-8 flex flex-col items-center gap-3 cursor-pointer transition-all group"
-        >
-          <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center group-hover:scale-105 transition-transform">
-            <Upload className="w-7 h-7 text-primary" />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Left Column: File & Basic Info */}
+          <div className="space-y-6">
+            <div
+              onClick={() => inputRef.current?.click()}
+              className="border-2 border-dashed border-border/60 hover:border-primary/40 rounded-[2rem] p-10 flex flex-col items-center gap-4 cursor-pointer transition-all group bg-muted/5 shadow-inner"
+            >
+              <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center group-hover:scale-105 transition-transform shadow-sm">
+                <Upload className="w-8 h-8 text-primary" />
+              </div>
+              {file ? (
+                <div className="text-center">
+                  <p className="font-black text-sm truncate max-w-[240px]">{file.name}</p>
+                  <p className="text-[11px] text-muted-foreground mt-1 font-bold">{formatFileSize(file.size)}</p>
+                </div>
+              ) : (
+                <div className="text-center">
+                  <p className="font-black text-base">Choose PDF Policy</p>
+                  <p className="text-[11px] text-muted-foreground mt-1 font-medium">Drag and drop document here</p>
+                </div>
+              )}
+              <input
+                ref={inputRef}
+                type="file"
+                accept="application/pdf"
+                className="hidden"
+                onChange={(e) => setFile(e.target.files[0] || null)}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Disease <span className="text-red-500">*</span></label>
+                <Input
+                  placeholder="e.g. lymphedema"
+                  value={disease}
+                  onChange={(e) => setDisease(e.target.value)}
+                  className="h-12 bg-muted/20 border-2 border-border/40 focus:border-primary/40 rounded-2xl text-sm font-black"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Document Type</label>
+                <Input
+                  placeholder="e.g. Clinical Guidelines"
+                  value={docType}
+                  onChange={(e) => setDocType(e.target.value)}
+                  className="h-12 bg-muted/20 border-2 border-border/40 focus:border-primary/40 rounded-2xl text-sm font-black"
+                />
+              </div>
+            </div>
+
+            {error && (
+              <div className="flex items-center gap-3 bg-red-500/10 text-red-600 border-2 border-red-500/20 px-5 py-4 rounded-2xl text-xs font-black animate-in shake">
+                <AlertCircle className="w-5 h-5 shrink-0" />
+                {error}
+              </div>
+            )}
           </div>
-          {file ? (
-            <div className="text-center">
-              <p className="font-black text-sm truncate max-w-[240px]">{file.name}</p>
-              <p className="text-[11px] text-muted-foreground mt-1">{formatFileSize(file.size)}</p>
+
+          {/* Right Column: Prompts Editing */}
+          <div className="space-y-6">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
+                <MessageSquare className="w-4 h-4" />
+              </div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Extraction Prompts</p>
             </div>
-          ) : (
-            <div className="text-center">
-              <p className="font-black text-sm">Click to choose PDF</p>
-              <p className="text-[11px] text-muted-foreground mt-1">or drag and drop</p>
-            </div>
-          )}
-          <input
-            ref={inputRef}
-            type="file"
-            accept="application/pdf"
-            className="hidden"
-            onChange={(e) => setFile(e.target.files[0] || null)}
-          />
+
+            {isFetchingPrompts ? (
+              <div className="py-20 flex flex-col items-center gap-3 animate-pulse opacity-40">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                <p className="text-[10px] font-black uppercase tracking-widest">Loading Prompts...</p>
+              </div>
+            ) : (
+              <div className="space-y-5">
+                {/* Chunk Summary Prompt */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-widest">Chunk Summary</span>
+                    <button
+                      onClick={() => setEditMode(p => ({ ...p, chunk_summary: !p.chunk_summary }))}
+                      className="text-[10px] font-black text-primary hover:underline uppercase tracking-widest"
+                    >
+                      {editMode.chunk_summary ? 'Close' : 'Edit'}
+                    </button>
+                  </div>
+                  <div className="relative group">
+                    <textarea
+                      value={prompts.chunk_summary}
+                      onChange={(e) => setPrompts(p => ({ ...p, chunk_summary: e.target.value }))}
+                      disabled={!editMode.chunk_summary}
+                      className={`w-full h-32 bg-muted/10 border-2 border-border/40 rounded-2xl p-4 text-[11px] font-medium leading-relaxed font-mono resize-none transition-all outline-none ${
+                        editMode.chunk_summary ? 'border-primary/40 bg-white ring-4 ring-primary/5' : 'text-muted-foreground/60'
+                      }`}
+                    />
+                    {editMode.chunk_summary && (
+                      <Button
+                        onClick={() => handleUpdatePrompt('chunk_summary')}
+                        className="absolute bottom-3 right-3 h-8 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20"
+                      >
+                        <Save className="w-3 h-3 mr-1.5" /> Update
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Rules Extraction Prompt */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-widest">Rules Extraction</span>
+                    <button
+                      onClick={() => setEditMode(p => ({ ...p, rules_extraction: !p.rules_extraction }))}
+                      className="text-[10px] font-black text-primary hover:underline uppercase tracking-widest"
+                    >
+                      {editMode.rules_extraction ? 'Close' : 'Edit'}
+                    </button>
+                  </div>
+                  <div className="relative group">
+                    <textarea
+                      value={prompts.rules_extraction}
+                      onChange={(e) => setPrompts(p => ({ ...p, rules_extraction: e.target.value }))}
+                      disabled={!editMode.rules_extraction}
+                      className={`w-full h-32 bg-muted/10 border-2 border-border/40 rounded-2xl p-4 text-[11px] font-medium leading-relaxed font-mono resize-none transition-all outline-none ${
+                        editMode.rules_extraction ? 'border-primary/40 bg-white ring-4 ring-primary/5' : 'text-muted-foreground/60'
+                      }`}
+                    />
+                    {editMode.rules_extraction && (
+                      <Button
+                        onClick={() => handleUpdatePrompt('rules_extraction')}
+                        className="absolute bottom-3 right-3 h-8 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20"
+                      >
+                        <Save className="w-3 h-3 mr-1.5" /> Update
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Fields */}
-        <div className="space-y-3">
-          <div>
-            <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1.5 block">Disease <span className="text-red-500">*</span></label>
-            <Input
-              placeholder="e.g. lymphedema"
-              value={disease}
-              onChange={(e) => setDisease(e.target.value)}
-              className="h-12 bg-muted/20 border-2 border-border/40 focus:border-primary/40 rounded-2xl text-sm font-medium"
-            />
-          </div>
-          <div>
-            <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1.5 block">Document Type <span className="text-muted-foreground/40">(optional)</span></label>
-            <Input
-              placeholder="e.g. Claims Processing"
-              value={docType}
-              onChange={(e) => setDocType(e.target.value)}
-              className="h-12 bg-muted/20 border-2 border-border/40 focus:border-primary/40 rounded-2xl text-sm font-medium"
-            />
-          </div>
-        </div>
-
-        {error && (
-          <div className="flex items-center gap-2 bg-red-500/10 text-red-600 border border-red-500/20 px-4 py-3 rounded-2xl text-xs font-bold">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            {error}
-          </div>
-        )}
-
-        <div className="flex gap-3">
-          <Button variant="outline" onClick={onClose} className="flex-1 h-12 rounded-2xl font-black border-border/60">
-            Cancel
+        <div className="flex gap-4 pt-4">
+          <Button variant="outline" onClick={onClose} className="flex-1 h-14 rounded-2xl font-black border-border/60 hover:bg-muted text-base transition-all">
+            Discard
           </Button>
-          <Button onClick={handleSubmit} disabled={loading} className="flex-1 h-12 rounded-2xl font-black bg-primary hover:bg-primary/90 shadow-xl shadow-primary/20 transition-all active:scale-95">
-            {loading ? 'Uploading…' : 'Upload'}
+          <Button onClick={handleSubmit} disabled={loading} className="flex-1 h-14 rounded-2xl font-black bg-primary hover:bg-primary/90 shadow-xl shadow-primary/20 text-base gap-3 transition-all active:scale-95">
+            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />}
+            {loading ? 'Processing...' : 'Upload & Start Analysis'}
           </Button>
         </div>
       </div>

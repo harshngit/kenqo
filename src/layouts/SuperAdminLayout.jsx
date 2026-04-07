@@ -34,6 +34,42 @@ const SuperAdminLayout = () => {
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [counts, setCounts] = useState({ rules: 0, documents: 0, chunks: 0 });
+
+  const userId = user?.user_id || user?.id || '';
+  const BASE_URL = 'https://kenqo-api-409744260053.asia-south1.run.app';
+
+  useEffect(() => {
+    const fetchCounts = async () => {
+      if (!userId) return;
+      try {
+        const [rulesRes, docsRes, chunksRes] = await Promise.all([
+          fetch(`${BASE_URL}/admin/rules/lymphedema`, { headers: { 'x-user-id': userId } }),
+          fetch(`${BASE_URL}/admin/documents/?disease=lymphedema`, { headers: { 'x-user-id': userId } }),
+          fetch(`${BASE_URL}/admin/rules/lymphedema/chunks`, { headers: { 'x-user-id': userId } }),
+        ]);
+
+        const [rulesData, docsData, chunksData] = await Promise.all([
+          rulesRes.json(),
+          docsRes.json(),
+          chunksRes.json(),
+        ]);
+
+        setCounts({
+          rules: rulesData.rule?.length || rulesData.rules?.length || 0,
+          documents: docsData.documents?.length || 0,
+          chunks: chunksData.chunks?.length || 0,
+        });
+      } catch (err) {
+        console.error('Failed to fetch sidebar counts', err);
+      }
+    };
+
+    fetchCounts();
+    // Refresh counts every 30 seconds or on location change
+    const interval = setInterval(fetchCounts, 30000);
+    return () => clearInterval(interval);
+  }, [userId, location.pathname]);
 
   useEffect(() => {
     setIsMobileMenuOpen(false);
@@ -54,9 +90,9 @@ const SuperAdminLayout = () => {
     {
       label: 'KNOWLEDGE BASE',
       items: [
-        { path: '/superadmin/knowledge-base', label: 'Rules', icon: GitBranch, badge: 14 },
-        { path: '/superadmin/documents', label: 'Documents', icon: FileText, badge: 5 },
-        { path: '/superadmin/chunks', label: 'Chunks', icon: Layers },
+        { path: '/superadmin/knowledge-base', label: 'Rules', icon: GitBranch, badge: counts.rules },
+        { path: '/superadmin/documents', label: 'Documents', icon: FileText, badge: counts.documents },
+        { path: '/superadmin/chunks', label: 'Chunks', icon: Layers, badge: counts.chunks },
       ],
     },
     {

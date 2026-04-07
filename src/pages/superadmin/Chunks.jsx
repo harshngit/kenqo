@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Layers, Search, Filter, ChevronRight, FileText, Hash, Copy, Eye, Activity, CheckCircle2, RefreshCw, Loader2 } from 'lucide-react';
+import { Layers, Search, Filter, ChevronRight, FileText, Hash, Copy, Eye, Activity, CheckCircle2, RefreshCw, Loader2, X, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import { Button } from '../../components/ui/button';
@@ -14,12 +14,16 @@ const ChunkDetailsDialog = ({ open, chunkId, onCancel, userId }) => {
   const [chunk, setChunk] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [linkedRules, setLinkedRules] = useState([]);
+  const [loadingRules, setLoadingRules] = useState(false);
 
   useEffect(() => {
     const fetchDetail = async () => {
       if (!open || !chunkId || !userId) return;
       setLoading(true);
       setError('');
+      setIsExpanded(false);
       try {
         const res = await fetch(`${BASE_URL}/admin/rules/${DISEASE}/chunks/${chunkId}`, {
           headers: { 'x-user-id': userId }
@@ -27,6 +31,27 @@ const ChunkDetailsDialog = ({ open, chunkId, onCancel, userId }) => {
         const data = await res.json();
         if (!res.ok || !data.success) throw new Error(data.message || 'Failed to load chunk details');
         setChunk(data.chunk);
+
+        // Fetch linked rules names
+        if (data.chunk?.rule_ids?.length > 0) {
+          setLoadingRules(true);
+          try {
+            const rules = await Promise.all(
+              data.chunk.rule_ids.map(async (id) => {
+                const ruleRes = await fetch(`${BASE_URL}/admin/rules/${DISEASE}/${id}`, {
+                  headers: { 'x-user-id': userId }
+                });
+                const ruleData = await ruleRes.json();
+                return ruleData.success ? ruleData.rule : { rule_id: id, rule_name: 'Unknown Rule' };
+              })
+            );
+            setLinkedRules(rules);
+          } catch (e) {
+            console.error('Failed to fetch rules:', e);
+          } finally {
+            setLoadingRules(false);
+          }
+        }
       } catch (e) {
         setError(e.message);
       } finally {
@@ -82,8 +107,21 @@ const ChunkDetailsDialog = ({ open, chunkId, onCancel, userId }) => {
 
             <div className="space-y-3">
               <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Fragment Text</p>
-              <div className="p-6 rounded-[1.5rem] bg-muted/10 border-l-4 border-primary text-sm font-medium leading-relaxed text-foreground/80">
-                {chunk.text}
+              <div className="p-6 rounded-[1.5rem] bg-muted/10 border-l-4 border-primary text-sm font-medium leading-relaxed text-foreground/80 relative">
+                <div className={isExpanded ? "" : "max-h-32 overflow-hidden relative"}>
+                  {chunk.text}
+                  {!isExpanded && chunk.text?.length > 300 && (
+                    <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-muted/10 to-transparent" />
+                  )}
+                </div>
+                {chunk.text?.length > 300 && (
+                  <button
+                    onClick={() => setIsExpanded(!isExpanded)}
+                    className="mt-2 text-primary text-[10px] font-black uppercase tracking-widest hover:underline"
+                  >
+                    {isExpanded ? 'Show Less' : 'Read More'}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -99,12 +137,25 @@ const ChunkDetailsDialog = ({ open, chunkId, onCancel, userId }) => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-3">
                 <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Linked Rules</p>
-                <div className="flex flex-wrap gap-2">
-                  {chunk.rule_ids?.map(id => (
-                    <span key={id} className="px-3 py-1.5 rounded-xl bg-primary/10 text-primary border border-primary/20 text-[10px] font-black uppercase tracking-widest">
-                      {id}
-                    </span>
-                  )) || <span className="text-xs text-muted-foreground italic">No linked rules</span>}
+                <div className="space-y-2 h-[200px] overflow-y-scroll">
+                  {loadingRules ? (
+                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground animate-pulse">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Fetching Rule Details...
+                    </div>
+                  ) : linkedRules.length > 0 ? (
+                    linkedRules.map(rule => (
+                      <div key={rule.rule_id} className="p-3 rounded-xl bg-primary/5 border border-primary/10 space-y-1">
+                        <span className="text-[8px] font-black text-primary/60 bg-primary/5 px-1.5 py-0.5 rounded border border-primary/10">
+                          {rule.rule_id}
+                        </span>
+                        <p className="text-[11px] font-bold text-foreground/80 leading-tight">
+                          {rule.rule_name?.replace(/_/g, ' ') || 'Untitled Rule'}
+                        </p>
+                      </div>
+                    ))
+                  ) : (
+                    <span className="text-xs text-muted-foreground italic">No linked rules</span>
+                  )}
                 </div>
               </div>
 
@@ -145,6 +196,7 @@ const ChunkDetailsDialog = ({ open, chunkId, onCancel, userId }) => {
   );
 };
 
+/* ─── LINKED RULES DIALOG ─── */
 const SuperAdminChunks = () => {
   const authUser = useSelector((state) => state.auth?.user);
   const userId = authUser?.user_id || authUser?.id || '';
@@ -153,7 +205,6 @@ const SuperAdminChunks = () => {
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState('');
   const [search, setSearch]       = useState('');
-  const [copied, setCopied]       = useState(null);
   const [selectedChunkId, setSelectedChunkId] = useState(null);
 
   const fetchChunks = useCallback(async () => {
@@ -183,12 +234,6 @@ const SuperAdminChunks = () => {
     (c.text || '').toLowerCase().includes(search.toLowerCase()) ||
     (c.source_doc || '').toLowerCase().includes(search.toLowerCase())
   );
-
-  const handleCopy = (id, text) => {
-    navigator.clipboard.writeText(text);
-    setCopied(id);
-    setTimeout(() => setCopied(null), 1500);
-  };
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 pb-12">
@@ -284,38 +329,20 @@ const SuperAdminChunks = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-violet-500/10 text-violet-600 border border-violet-500/20 text-[10px] font-black uppercase tracking-widest shadow-sm">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    {chunk.rule_ids?.length || 0} Linked Rules
-                  </div>
                   <button
                     onClick={() => setSelectedChunkId(chunk.chunk_id)}
                     className="w-10 h-10 flex items-center justify-center rounded-xl bg-muted/50 hover:bg-primary/10 transition-all text-muted-foreground hover:text-primary border border-border/40 hover:border-primary/20 active:scale-95 group/view"
                   >
                     <Eye className="w-5 h-5 group-hover/view:scale-110 transition-transform" />
                   </button>
-                  <button
-                    onClick={() => handleCopy(chunk.chunk_id, chunk.text)}
-                    className="w-10 h-10 flex items-center justify-center rounded-xl bg-muted/50 hover:bg-primary/10 transition-all text-muted-foreground hover:text-primary border border-border/40 hover:border-primary/20 active:scale-95 group/copy"
-                  >
-                    {copied === chunk.chunk_id ? (
-                      <CheckCircle2 className="w-5 h-5 text-emerald-500 animate-in zoom-in" />
-                    ) : (
-                      <Copy className="w-5 h-5 group-hover/copy:scale-110 transition-transform" />
-                    )}
-                  </button>
                 </div>
               </div>
               <div className="relative">
                 <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary/10 rounded-full group-hover:bg-primary/30 transition-colors" />
-                <p className="text-sm text-foreground/70 leading-relaxed font-medium pl-6">{chunk.text}</p>
+                <p className="text-sm text-foreground/70 leading-relaxed font-medium pl-6">
+                  {chunk.summary || chunk.text?.substring(0, 150) + (chunk.text?.length > 150 ? '...' : '')}
+                </p>
               </div>
-              {chunk.summary && (
-                <div className="mt-4 pl-6">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/40 mb-1">Summary</p>
-                  <p className="text-xs text-muted-foreground italic font-medium">{chunk.summary}</p>
-                </div>
-              )}
             </div>
           )
         ))}
