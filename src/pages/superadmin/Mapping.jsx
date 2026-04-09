@@ -156,7 +156,7 @@ function EditFieldsDialog({ open, agent, onClose, onSave, isSaving, saveError })
               </Button>
             </div>
             <p className="text-[10px] text-muted-foreground/60 italic ml-1">
-              Names will be automatically converted to snake_case (e.g. "Patient Name" → "patient_name")
+              Names will be automatically converted to snake_case (e.g. &quot;Patient Name&quot; → &quot;patient_name&quot;)
             </p>
           </div>
 
@@ -222,6 +222,65 @@ function EditFieldsDialog({ open, agent, onClose, onSave, isSaving, saveError })
           >
             {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             {isSaving ? 'Saving Changes…' : 'Save Mappings'}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Assign Field Modal ───────────────────────────────────────────────────────
+function AssignFieldModal({ open, field, agents, onClose, onAssign, isAssigning }) {
+  if (!open || !field) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-md rounded-3xl p-0 overflow-hidden border-none shadow-2xl">
+        <div className="px-8 pt-8 pb-6 border-b border-border/40 bg-primary/5 relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-6 opacity-5 rotate-12">
+            <Map className="w-20 h-20" />
+          </div>
+          <DialogHeader className="relative z-10">
+            <DialogTitle className="font-black text-2xl tracking-tight">Assign Field</DialogTitle>
+            <p className="text-sm text-muted-foreground font-medium mt-1">
+              Select an agent to map the field <span className="text-primary font-black font-mono">&quot;{typeof field === 'string' ? field : field.name}&quot;</span>
+            </p>
+          </DialogHeader>
+        </div>
+
+        <div className="px-8 py-6 max-h-[50vh] overflow-y-auto space-y-3 scrollbar-none">
+          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1">Available Agents (Sections)</p>
+          <div className="grid grid-cols-1 gap-2">
+            {agents.map(([agentId, agent], idx) => {
+              const p = AGENT_PALETTE[idx % AGENT_PALETTE.length];
+              return (
+                <button
+                  key={agentId}
+                  onClick={() => onAssign(agentId, typeof field === 'string' ? field : field.name)}
+                  disabled={isAssigning}
+                  className="group flex items-center justify-between p-4 rounded-2xl border-2 border-border/40 hover:border-primary/30 hover:bg-primary/5 transition-all text-left active:scale-[0.98]"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className={`w-10 h-10 rounded-xl ${p.icon} flex items-center justify-center font-black text-sm shrink-0 shadow-inner group-hover:scale-110 transition-transform`}>
+                      {agentId}
+                    </div>
+                    <div>
+                      <p className="text-sm font-black text-foreground">{agent.agent_name}</p>
+                      <p className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest">
+                        {agent.fields.length} Fields Mapped
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all" />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="px-8 py-6 border-t border-border/40 bg-muted/10">
+          <Button variant="outline" onClick={onClose} disabled={isAssigning} className="w-full h-12 rounded-2xl font-black border-border/60">
+            Cancel
           </Button>
         </div>
       </DialogContent>
@@ -512,6 +571,9 @@ const SuperAdminMapping = () => {
     setTimeout(() => setToast(null), 3000);
   };
 
+  const [assignModal, setAssignModal] = useState({ open: false, field: null });
+  const [isAssigning, setIsAssigning] = useState(false);
+
   // ── Fetch ──────────────────────────────────────────────────────────────────
   const fetchMapping = useCallback(async () => {
     setIsFetching(true); setFetchError(null);
@@ -529,6 +591,31 @@ const SuperAdminMapping = () => {
       setIsFetching(false);
     }
   }, [superadminId]);
+
+  const handleAssignField = async (agentId, fieldName) => {
+    const agent = mapping.agent_field_mapping[agentId];
+    if (!agent) return;
+
+    const newFieldNames = [...agent.fields.map(f => f.name), fieldName];
+    setIsAssigning(true);
+    try {
+      const res = await fetch(`${BASE_URL}/admin/config/${DISEASE}/mapping/${agentId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-user-id': superadminId },
+        body: JSON.stringify({ user_id: superadminId, fields: newFieldNames }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data?.detail || data?.message || 'Assignment failed');
+      
+      showToast(`Field "${fieldName}" assigned to ${agent.agent_name}`);
+      setAssignModal({ open: false, field: null });
+      fetchMapping();
+    } catch (e) {
+      showToast(e.message, 'error');
+    } finally {
+      setIsAssigning(false);
+    }
+  };
 
   useEffect(() => { fetchMapping(); }, [fetchMapping]);
 
@@ -717,12 +804,13 @@ const SuperAdminMapping = () => {
                   </div>
                   <div className="flex flex-wrap gap-2.5">
                     {unassigned.map((field) => (
-                      <div
+                      <button
                         key={typeof field === 'string' ? field : field.name}
-                        className="px-4 py-2.5 rounded-2xl border-2 border-amber-500/20 bg-white text-xs font-mono font-bold text-amber-700 shadow-sm hover:border-amber-500/40 hover:scale-105 transition-all cursor-default"
+                        onClick={() => setAssignModal({ open: true, field })}
+                        className="px-4 py-2.5 rounded-2xl border-2 border-amber-500/20 bg-white text-xs font-mono font-bold text-amber-700 shadow-sm hover:border-amber-500/40 hover:scale-105 transition-all active:scale-95 cursor-pointer"
                       >
                         {toLabel(typeof field === 'string' ? field : field.name)}
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -731,6 +819,15 @@ const SuperAdminMapping = () => {
           </Card>
         </>
       )}
+
+      <AssignFieldModal
+        open={assignModal.open}
+        field={assignModal.field}
+        agents={agents}
+        onClose={() => setAssignModal({ open: false, field: null })}
+        onAssign={handleAssignField}
+        isAssigning={isAssigning}
+      />
     </div>
   );
 };

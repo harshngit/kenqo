@@ -510,13 +510,6 @@ function DocTypeCard({ docType, colorClass, agentMap, onToggle, onEdit, onDelete
         <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-2 group-hover:translate-x-0">
           <Button
             variant="outline" size="sm"
-            onClick={() => onEdit(docType)}
-            className="h-9 px-4 text-xs rounded-xl border-primary/20 text-primary hover:bg-primary hover:text-white font-black transition-all active:scale-95 shadow-sm"
-          >
-            <Edit2 className="w-3.5 h-3.5 mr-2" /> Edit
-          </Button>
-          <Button
-            variant="outline" size="sm"
             onClick={() => onDelete(docType.name)}
             className="h-9 px-4 text-xs rounded-xl border-red-500/20 text-red-500 hover:bg-red-500 hover:text-white font-black transition-all active:scale-95 shadow-sm"
           >

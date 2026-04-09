@@ -4,7 +4,7 @@ import { Input } from '../../components/ui/input';
 import { Button } from '../../components/ui/button';
 import {
   FileText, Search, CheckCircle2, Clock, Users,
-  ArrowUpRight, Upload, Trash2, AlertCircle, X, Loader2, MessageSquare, Save, Edit2
+  ArrowUpRight, Upload, Trash2, AlertCircle, X, Loader2, MessageSquare, Save, Edit2, Eye, Download
 } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 
@@ -62,7 +62,7 @@ const StatusBadge = ({ status, stepMessage }) => {
 const DeleteConfirmDialog = ({ open, title, description, onConfirm, onCancel, loading }) => {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-card border-2 border-border/40 rounded-[2.5rem] p-8 w-full max-w-md shadow-2xl space-y-6 animate-in zoom-in-95 duration-200">
         <div className="flex flex-col items-center text-center gap-4">
           <div className="w-20 h-20 bg-red-500/10 rounded-[2.5rem] flex items-center justify-center shadow-inner">
@@ -80,6 +80,66 @@ const DeleteConfirmDialog = ({ open, title, description, onConfirm, onCancel, lo
           <Button onClick={onConfirm} disabled={loading} className="flex-1 h-12 rounded-2xl font-black bg-red-500 hover:bg-red-600 text-white shadow-xl shadow-red-500/20 transition-all active:scale-95">
             {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Delete'}
           </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ─── DOCUMENT VIEWER MODAL ─── */
+const DocumentViewerModal = ({ open, doc, onClose }) => {
+  if (!open || !doc) return null;
+
+  return (
+    <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200 p-4">
+      <div className="bg-card border-2 border-border/40 rounded-[2.5rem] w-full max-w-5xl h-[90vh] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
+        
+        {/* Header */}
+        <div className="px-8 py-6 border-b-2 border-border/10 flex items-center justify-between bg-muted/5">
+          <div className="flex items-center gap-4 min-w-0">
+            <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center shrink-0">
+              <FileText className="w-6 h-6 text-primary" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-xl font-black tracking-tight truncate">{doc.filename}</h2>
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
+                {doc.disease} — {doc.doc_type || 'General Document'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <a 
+              href={doc.doc_url} 
+              download={doc.filename}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="h-11 px-6 rounded-2xl font-black text-xs uppercase tracking-widest bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20 transition-all flex items-center gap-2 active:scale-95"
+            >
+              <Download className="w-4 h-4" /> Download
+            </a>
+            <button
+              onClick={onClose}
+              className="w-11 h-11 rounded-2xl border-2 border-border/40 flex items-center justify-center hover:bg-muted transition-all active:scale-95"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* PDF Viewer Body */}
+        <div className="flex-1 bg-muted/20 relative">
+          {doc.doc_url ? (
+            <iframe
+              src={`${doc.doc_url}#toolbar=0&navpanes=0&scrollbar=1`}
+              className="w-full h-full border-none"
+              title={doc.filename}
+            />
+          ) : (
+            <div className="w-full h-full flex flex-col items-center justify-center gap-4 opacity-40">
+              <AlertCircle className="w-12 h-12" />
+              <p className="font-black text-lg uppercase tracking-widest">Document URL Not Available</p>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -199,7 +259,7 @@ const UploadModal = ({ superAdminId, onClose, onUploaded }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-card border-2 border-border/40 rounded-[2.5rem] p-8 w-full max-w-4xl shadow-2xl space-y-8 animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -380,6 +440,7 @@ const SuperAdminDocuments = () => {
   const [showUpload, setShowUpload]   = useState(false);
   const [deletingId, setDeletingId]   = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, documentId: null, filename: '' });
+  const [viewerDoc, setViewerDoc]     = useState(null); // ← NEW: document viewer state
 
   // Polling map: { [document_id]: intervalId }
   const pollingMap = useRef({});
@@ -528,7 +589,7 @@ const SuperAdminDocuments = () => {
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 pb-12">
+    <>
       <DeleteConfirmDialog
         open={deleteConfirm.open}
         title="Delete Document"
@@ -544,9 +605,15 @@ const SuperAdminDocuments = () => {
           onUploaded={handleUploaded}
         />
       )}
+      <DocumentViewerModal
+        open={!!viewerDoc}
+        doc={viewerDoc}
+        onClose={() => setViewerDoc(null)}
+      />
 
-      {/* ── Header ── */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+      <div className="space-y-8 animate-in fade-in duration-500 pb-12">
+        {/* ── Header ── */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div className="space-y-3">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-[10px] font-black uppercase tracking-[0.2em] shadow-sm">
             <FileText className="w-3.5 h-3.5" /> Document Central
@@ -557,12 +624,6 @@ const SuperAdminDocuments = () => {
           </p>
         </div>
         <div className="flex items-center gap-3 self-start md:self-auto">
-          <Button
-            variant="outline"
-            className="h-11 px-5 rounded-2xl font-black text-sm gap-2 border-border/60 hover:bg-muted transition-all active:scale-95 shadow-sm"
-          >
-            Export Report
-          </Button>
           <Button
             onClick={() => setShowUpload(true)}
             className="h-11 px-6 rounded-2xl font-black text-sm gap-2 bg-primary hover:bg-primary/90 shadow-xl shadow-primary/20 transition-all active:scale-95"
@@ -718,7 +779,17 @@ const SuperAdminDocuments = () => {
                     <Button
                       variant="outline"
                       size="icon"
+                      onClick={() => setViewerDoc(doc)}
                       className="w-10 h-10 rounded-xl border-border/60 hover:bg-primary/10 hover:text-primary hover:border-primary/20 transition-all active:scale-95 shadow-sm"
+                    >
+                      <Eye className="w-5 h-5" />
+                    </Button>
+
+                    {/* Details */}
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="w-10 h-10 rounded-xl border-border/60 hover:bg-muted transition-all active:scale-95 shadow-sm"
                     >
                       <ArrowUpRight className="w-5 h-5" />
                     </Button>
@@ -749,7 +820,8 @@ const SuperAdminDocuments = () => {
         )}
       </div>
     </div>
-  );
+  </>
+);
 };
 
 export default SuperAdminDocuments;
