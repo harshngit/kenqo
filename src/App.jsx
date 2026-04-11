@@ -30,6 +30,7 @@ import SuperAdminClassifier from './pages/superadmin/Classifier';
 import SuperAdminMapping from './pages/superadmin/Mapping';
 import SuperAdminPrompts from './pages/superadmin/Prompts';
 import SuperAdminDiseases from './pages/superadmin/Diseases';
+import SuperAdminRules from './pages/superadmin/Rules';
 
 import AdminDashboard from './pages/admin/Dashboard';
 import AdminUsers from './pages/admin/Users';
@@ -119,6 +120,7 @@ function App() {
               <Route path="users" element={<SuperAdminUsers />} />
               <Route path="documents" element={<SuperAdminDocuments />} />
               <Route path="knowledge-base" element={<SuperAdminKnowledgeBase />} />
+              <Route path="rules" element={<SuperAdminRules />} />
               <Route path="chunks" element={<SuperAdminChunks />} />
               <Route path="extraction-schema" element={<SuperAdminExtractionSchema />} />
               <Route path="agents" element={<SuperAdminAgents />} />

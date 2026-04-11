@@ -106,7 +106,7 @@ const SuperAdminDashboard = () => {
       icon: GitBranch,
       iconColor: 'text-primary',
       iconBg: 'bg-primary/10',
-      to: '/superadmin/knowledge-base',
+      to: '/superadmin/rules',
     },
     {
       title: 'TOTAL CHUNKS',
@@ -239,7 +239,7 @@ const SuperAdminDashboard = () => {
         <div className="bg-card border-2 border-border/40 rounded-[2rem] overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col h-[400px]">
           <div className="flex items-center justify-between px-6 py-5 border-b-2 border-border/10 bg-muted/5 shrink-0">
             <h3 className="text-sm font-black text-foreground uppercase tracking-widest">Rules — Pending Review</h3>
-            <Link to="/superadmin/knowledge-base" className="text-[10px] font-black uppercase tracking-widest text-primary hover:text-primary/80 flex items-center gap-1.5 transition-colors">
+            <Link to="/superadmin/rules" className="text-[10px] font-black uppercase tracking-widest text-primary hover:text-primary/80 flex items-center gap-1.5 transition-colors">
               View All <ArrowUpRight className="w-3.5 h-3.5" />
             </Link>
           </div>

@@ -175,7 +175,7 @@ const UserLayout = () => {
         </header>
 
         {/* Content Area */}
-        <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full">
+        <div className="p-4 sm:p-6 lg:p-10 max-w-screen-2xl mx-auto w-full transition-all duration-500">
           <Outlet />
         </div>
       </main>

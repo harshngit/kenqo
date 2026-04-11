@@ -143,27 +143,27 @@ const Login = () => {
           )}
         </button>
 
-        <div className="w-full max-w-md space-y-10 animate-in fade-in slide-in-from-right-10 duration-700">
+        <div className="w-full max-w-xl space-y-12 animate-in fade-in slide-in-from-right-10 duration-700">
           
           {/* Header */}
-          <div className="space-y-3">
-            <h1 className="text-4xl font-black text-foreground tracking-tight">
+          <div className="space-y-4">
+            <h1 className="text-5xl font-black text-foreground tracking-tight leading-tight">
               {formMode === 'login' ? 'Welcome Back' : 'Create Account'}
             </h1>
-            <p className="text-sm text-muted-foreground font-bold opacity-70">
+            <p className="text-base text-muted-foreground font-bold opacity-70 tracking-wide">
               {formMode === 'login' 
-                ? 'Sign in to access your dashboard' 
-                : 'Join our intelligence network'}
+                ? 'Sign in to access your intelligence dashboard' 
+                : 'Join our clinical intelligence network'}
             </p>
           </div>
 
           {/* Form Mode Switcher */}
-          <div className="flex p-1.5 bg-muted rounded-2xl border border-border/50">
+          <div className="flex p-2 bg-muted rounded-2xl border-2 border-border/40 shadow-inner">
             <button
               onClick={() => setFormMode('login')}
-              className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+              className={`flex-1 py-4 rounded-xl text-sm font-black uppercase tracking-[0.2em] transition-all duration-300 ${
                 formMode === 'login' 
-                  ? 'bg-primary text-white shadow-lg' 
+                  ? 'bg-primary text-white shadow-xl shadow-primary/20 scale-[1.02]' 
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
@@ -171,9 +171,9 @@ const Login = () => {
             </button>
             <button
               onClick={() => setFormMode('register')}
-              className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+              className={`flex-1 py-4 rounded-xl text-sm font-black uppercase tracking-[0.2em] transition-all duration-300 ${
                 formMode === 'register' 
-                  ? 'bg-primary text-white shadow-lg' 
+                  ? 'bg-primary text-white shadow-xl shadow-primary/20 scale-[1.02]' 
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
@@ -182,45 +182,45 @@ const Login = () => {
           </div>
 
           {/* Form */}
-          <form onSubmit={formMode === 'login' ? handleLogin : handleRegister} className="space-y-6">
+          <form onSubmit={formMode === 'login' ? handleLogin : handleRegister} className="space-y-8">
             <AnimatePresence mode="wait">
               {formMode === 'register' && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="space-y-2"
+                  className="space-y-3"
                 >
-                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/80 ml-1">Full Name</label>
+                  <label className="text-[11px] font-black uppercase tracking-[0.25em] text-muted-foreground/80 ml-2">Full Name</label>
                   <Input
                     type="text"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="Dr. Jane Smith"
-                    className="h-14 px-6 rounded-2xl bg-muted/30 border-border/50 focus:border-primary/50 text-base font-bold shadow-sm"
+                    className="h-16 px-8 rounded-3xl bg-muted/30 border-2 border-border/40 focus:border-primary/50 text-lg font-bold shadow-sm transition-all"
                     required
                   />
                 </motion.div>
               )}
             </AnimatePresence>
 
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/80 ml-1">Email Address</label>
+            <div className="space-y-3">
+              <label className="text-[11px] font-black uppercase tracking-[0.25em] text-muted-foreground/80 ml-2">Email Address</label>
               <Input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="doctor@healthcare.com"
-                className="h-14 px-6 rounded-2xl bg-muted/30 border-border/50 focus:border-primary/50 text-base font-bold shadow-sm"
+                className="h-16 px-8 rounded-3xl bg-muted/30 border-2 border-border/40 focus:border-primary/50 text-lg font-bold shadow-sm transition-all"
                 required
               />
             </div>
 
-            <div className="space-y-2">
-              <div className="flex justify-between items-center ml-1">
-                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/80">Password</label>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center ml-2">
+                <label className="text-[11px] font-black uppercase tracking-[0.25em] text-muted-foreground/80">Password</label>
                 {formMode === 'login' && (
-                  <button type="button" className="text-[10px] font-black text-primary hover:text-primary/80 uppercase tracking-widest">Forgot?</button>
+                  <button type="button" className="text-[11px] font-black text-primary hover:text-primary/80 uppercase tracking-[0.15em] transition-colors">Forgot Password?</button>
                 )}
               </div>
               <div className="relative group">
@@ -229,15 +229,15 @@ const Login = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="h-14 px-6 rounded-2xl bg-muted/30 border-border/50 focus:border-primary/50 text-base font-bold pr-14 shadow-sm"
+                  className="h-16 px-8 rounded-3xl bg-muted/30 border-2 border-border/40 focus:border-primary/50 text-lg font-bold pr-16 shadow-sm transition-all"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-xl hover:bg-muted/50 transition-all duration-300"
+                  className="absolute right-5 top-1/2 -translate-y-1/2 p-2.5 rounded-2xl hover:bg-muted/50 transition-all duration-300"
                 >
-                  {showPassword ? <EyeOff className="w-4 h-4 text-muted-foreground" /> : <Eye className="w-4 h-4 text-muted-foreground" />}
+                  {showPassword ? <EyeOff className="w-5 h-5 text-muted-foreground" /> : <Eye className="w-5 h-5 text-muted-foreground" />}
                 </button>
               </div>
             </div>
@@ -245,25 +245,25 @@ const Login = () => {
             <Button
               type="submit"
               disabled={isLoading}
-              className="w-full h-16 rounded-2xl bg-primary hover:bg-primary/95 text-white font-black text-lg shadow-xl shadow-primary/30 transition-all hover:scale-[1.01] active:scale-[0.98] group relative overflow-hidden"
+              className="w-full h-20 rounded-3xl bg-primary hover:bg-primary/95 text-white font-black text-xl shadow-2xl shadow-primary/30 transition-all hover:scale-[1.01] active:scale-[0.98] group relative overflow-hidden"
             >
               {isLoading ? (
-                <div className="flex items-center gap-4">
-                  <div className="w-5 h-5 border-4 border-white/30 border-t-white rounded-full animate-spin" />
+                <div className="flex items-center gap-6">
+                  <div className="w-6 h-6 border-4 border-white/30 border-t-white rounded-full animate-spin" />
                   <span>Processing...</span>
                 </div>
               ) : (
-                <div className="flex items-center justify-center gap-2">
-                  <span>{formMode === 'login' ? 'Enter Dashboard' : 'Create Account'}</span>
-                  <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+                <div className="flex items-center justify-center gap-3">
+                  <span className="tracking-tight">{formMode === 'login' ? 'Enter Dashboard' : 'Create Account'}</span>
+                  <ArrowRight className="w-6 h-6 transition-transform group-hover:translate-x-2" />
                 </div>
               )}
             </Button>
           </form>
 
           {/* Footer Branding */}
-          <div className="pt-1 flex flex-col items-center gap-6 opacity-40 grayscale hover:grayscale-0 hover:opacity-100 transition-all duration-500">
-            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-muted-foreground text-center leading-relaxed">
+          <div className="pt-4 flex flex-col items-center gap-6 opacity-30 grayscale hover:grayscale-0 hover:opacity-100 transition-all duration-700">
+            <p className="text-[11px] font-black uppercase tracking-[0.3em] text-muted-foreground text-center leading-relaxed">
               Powered by Kenqo Intelligence Engine • HIPAA Certified
             </p>
           </div>

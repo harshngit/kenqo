@@ -90,7 +90,7 @@ const SuperAdminLayout = () => {
     {
       label: 'KNOWLEDGE BASE',
       items: [
-        { path: '/superadmin/knowledge-base', label: 'Rules', icon: GitBranch, badge: counts.rules },
+        { path: '/superadmin/rules', label: 'Rules', icon: GitBranch, badge: counts.rules },
         { path: '/superadmin/documents', label: 'Documents', icon: FileText, badge: counts.documents },
         { path: '/superadmin/chunks', label: 'Chunks', icon: Layers, badge: counts.chunks },
       ],
@@ -262,7 +262,7 @@ const SuperAdminLayout = () => {
         </header>
 
         {/* Content Area */}
-        <div className="p-4 sm:p-6 max-w-screen-2xl mx-auto w-full">
+        <div className="p-4 sm:p-6 lg:p-10 max-w-screen-2xl mx-auto w-full transition-all duration-500">
           <Outlet />
         </div>
       </main>

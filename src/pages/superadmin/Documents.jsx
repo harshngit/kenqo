@@ -4,7 +4,7 @@ import { Input } from '../../components/ui/input';
 import { Button } from '../../components/ui/button';
 import {
   FileText, Search, CheckCircle2, Clock, Users,
-  ArrowUpRight, Upload, Trash2, AlertCircle, X, Loader2, MessageSquare, Save, Edit2, Eye, Download
+  ArrowUpRight, Upload, Trash2, AlertCircle, X, Loader2, MessageSquare, Save, Edit2, Eye, Download, ChevronDown
 } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 
@@ -25,6 +25,18 @@ const formatDate = (dateStr) => {
   return new Date(dateStr).toLocaleDateString(undefined, {
     month: 'short', day: 'numeric', year: 'numeric',
   });
+};
+
+const getAuthorityLabel = (value) => {
+  const v = Number(value);
+  const labels = {
+    1: 'Very High',
+    2: 'High',
+    3: 'Medium',
+    4: 'Low',
+    5: 'Very Low'
+  };
+  return labels[v] || 'Very Low';
 };
 
 // Maps API status → UI badge
@@ -151,6 +163,10 @@ const UploadModal = ({ superAdminId, onClose, onUploaded }) => {
   const [file, setFile] = useState(null);
   const [disease, setDisease] = useState('lymphedema');
   const [docType, setDocType] = useState('');
+  const [payerScope, setPayerScope] = useState('UNIVERSAL');
+  const [authorityLevel, setAuthorityLevel] = useState('');
+  const [options, setOptions] = useState({ doc_types: [], payer_scopes: [], authority_levels: [] });
+  const [isFetchingOptions, setIsFetchingOptions] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const inputRef = useRef();
@@ -159,6 +175,28 @@ const UploadModal = ({ superAdminId, onClose, onUploaded }) => {
   const [prompts, setPrompts] = useState({ chunk_summary: '', rules_extraction: '' });
   const [isFetchingPrompts, setIsFetchingPrompts] = useState(false);
   const [editMode, setEditMode] = useState({ chunk_summary: false, rules_extraction: false });
+
+  const fetchOptions = useCallback(async () => {
+    if (!superAdminId) return;
+    setIsFetchingOptions(true);
+    try {
+      const response = await fetch(`${BASE_URL}/admin/documents/options`, {
+        headers: { 'x-user-id': superAdminId },
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setOptions({
+          doc_types: data.doc_types || [],
+          payer_scopes: data.payer_scopes || [],
+          authority_levels: data.authority_levels || [],
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch options', err);
+    } finally {
+      setIsFetchingOptions(false);
+    }
+  }, [superAdminId]);
 
   const fetchPrompts = useCallback(async () => {
     if (!superAdminId) return;
@@ -190,8 +228,9 @@ const UploadModal = ({ superAdminId, onClose, onUploaded }) => {
   }, [superAdminId]);
 
   useEffect(() => {
+    fetchOptions();
     fetchPrompts();
-  }, [fetchPrompts]);
+  }, [fetchOptions, fetchPrompts]);
 
   const handleUpdatePrompt = async (key) => {
     setLoading(true);
@@ -225,8 +264,8 @@ const UploadModal = ({ superAdminId, onClose, onUploaded }) => {
   };
 
   const handleSubmit = async () => {
-    if (!file || !disease.trim()) {
-      setError('PDF file and disease are required.');
+    if (!file || !disease.trim() || !docType || !payerScope || !authorityLevel) {
+      setError('PDF file, disease, document type, payer scope, and authority level are required.');
       return;
     }
     if (!superAdminId) {
@@ -240,7 +279,9 @@ const UploadModal = ({ superAdminId, onClose, onUploaded }) => {
       fd.append('file', file);
       fd.append('disease', disease.trim().toLowerCase());
       fd.append('user_id', superAdminId);
-      if (docType.trim()) fd.append('doc_type', docType.trim());
+      fd.append('doc_type', docType.trim());
+      fd.append('payer_scope', payerScope);
+      fd.append('authority_level', authorityLevel);
 
       const res = await fetch(`${BASE_URL}/admin/documents/upload`, {
         method: 'POST',
@@ -249,7 +290,7 @@ const UploadModal = ({ superAdminId, onClose, onUploaded }) => {
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.message || 'Upload failed');
-      onUploaded(data);
+      onUploaded({ ...data, disease: disease.trim().toLowerCase(), doc_type: docType.trim(), authority_level: authorityLevel });
       onClose();
     } catch (e) {
       setError(e.message || 'Upload failed. Please try again.');
@@ -302,24 +343,69 @@ const UploadModal = ({ superAdminId, onClose, onUploaded }) => {
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-4">
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Disease <span className="text-red-500">*</span></label>
                 <Input
                   placeholder="e.g. lymphedema"
                   value={disease}
                   onChange={(e) => setDisease(e.target.value)}
-                  className="h-12 bg-muted/20 border-2 border-border/40 focus:border-primary/40 rounded-2xl text-sm font-black"
+                  className="h-12 bg-card border-2 border-border/40 focus:border-primary/40 rounded-2xl text-sm font-black shadow-sm transition-all"
                 />
               </div>
+
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Document Type</label>
-                <Input
-                  placeholder="e.g. Clinical Guidelines"
-                  value={docType}
-                  onChange={(e) => setDocType(e.target.value)}
-                  className="h-12 bg-muted/20 border-2 border-border/40 focus:border-primary/40 rounded-2xl text-sm font-black"
-                />
+                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Document Type <span className="text-red-500">*</span></label>
+                <div className="relative">
+                  <select
+                    value={docType}
+                    onChange={(e) => setDocType(e.target.value)}
+                    className="w-full h-12 px-4 bg-card border-2 border-border/40 focus:outline-none focus:ring-0 focus:border-primary/40 rounded-2xl text-sm font-black appearance-none cursor-pointer shadow-sm transition-all"
+                  >
+                    <option value="" disabled>Select document type...</option>
+                    {options.doc_types.map(opt => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Payer Scope <span className="text-red-500">*</span></label>
+                  <div className="relative">
+                    <select
+                      value={payerScope}
+                      onChange={(e) => setPayerScope(e.target.value)}
+                      className="w-full h-12 px-4 bg-card border-2 border-border/40 focus:outline-none focus:ring-0 focus:border-primary/40 rounded-2xl text-sm font-black appearance-none cursor-pointer shadow-sm transition-all"
+                    >
+                      {options.payer_scopes.map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/40 pointer-events-none" />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Authority Level <span className="text-red-500">*</span></label>
+                  <div className="relative">
+                    <select
+                      value={authorityLevel}
+                      onChange={(e) => setAuthorityLevel(e.target.value)}
+                      className="w-full h-12 px-4 bg-card border-2 border-border/40 focus:outline-none focus:ring-0 focus:border-primary/40 rounded-2xl text-sm font-black appearance-none cursor-pointer shadow-sm transition-all"
+                    >
+                      <option value="" disabled>Select authority level...</option>
+                      {options.authority_levels.map(opt => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.value} — {getAuthorityLabel(opt.value)}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/40 pointer-events-none" />
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -417,9 +503,13 @@ const UploadModal = ({ superAdminId, onClose, onUploaded }) => {
           <Button variant="outline" onClick={onClose} className="flex-1 h-14 rounded-2xl font-black border-border/60 hover:bg-muted text-base transition-all">
             Discard
           </Button>
-          <Button onClick={handleSubmit} disabled={loading} className="flex-1 h-14 rounded-2xl font-black bg-primary hover:bg-primary/90 shadow-xl shadow-primary/20 text-base gap-3 transition-all active:scale-95">
+          <Button 
+            onClick={handleSubmit} 
+            disabled={loading || isFetchingOptions || !file || !disease.trim() || !docType || !payerScope || !authorityLevel} 
+            className="flex-1 h-14 rounded-2xl font-black bg-primary hover:bg-primary/90 shadow-xl shadow-primary/20 text-base gap-3 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
             {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />}
-            {loading ? 'Processing...' : 'Upload & Start Analysis'}
+            {loading ? 'Processing...' : (isFetchingOptions ? 'Loading options...' : 'Upload & Start Analysis')}
           </Button>
         </div>
       </div>
@@ -444,6 +534,33 @@ const SuperAdminDocuments = () => {
 
   // Polling map: { [document_id]: intervalId }
   const pollingMap = useRef({});
+
+  // ── Background builds after ingestion ──
+  const triggerPostIngestionBuilds = useCallback(async (disease) => {
+    if (!disease || !superAdminId) return;
+    const diseaseLower = disease.toLowerCase();
+    
+    console.log(`Triggering background post-ingestion builds for ${diseaseLower}...`);
+    
+    const hcpcsUrl = `${BASE_URL}/admin/config/${diseaseLower}/build-hcpcs-reference`;
+    const mergeUrl = `${BASE_URL}/admin/rules/${diseaseLower}/build-merge-suggestions`;
+    
+    const headers = {
+      'x-user-id': superAdminId,
+      'Content-Type': 'application/json',
+    };
+    const body = JSON.stringify({ user_id: superAdminId });
+
+    // Fire and forget in parallel
+    Promise.all([
+      fetch(hcpcsUrl, { method: 'POST', headers, body }),
+      fetch(mergeUrl, { method: 'POST', headers, body })
+    ]).then(() => {
+      console.log(`Successfully triggered background builds for ${diseaseLower}`);
+    }).catch((err) => {
+      console.error(`Failed to trigger background builds for ${diseaseLower}:`, err);
+    });
+  }, [superAdminId]);
 
   // ── Fetch full list ──
   const fetchDocuments = useCallback(async () => {
@@ -507,6 +624,17 @@ const SuperAdminDocuments = () => {
         if (data.status === 'complete' || data.status === 'failed') {
           clearInterval(pollingMap.current[documentId]);
           delete pollingMap.current[documentId];
+
+          if (data.status === 'complete') {
+            // Trigger background builds after successful ingestion
+            setDocuments(prev => {
+              const doc = prev.find(d => d.document_id === documentId);
+              if (doc && doc.disease) {
+                triggerPostIngestionBuilds(doc.disease);
+              }
+              return prev;
+            });
+          }
         }
       } catch {
         // silently ignore polling errors
@@ -531,8 +659,9 @@ const SuperAdminDocuments = () => {
     const newDoc = {
       document_id:  uploadResponse.document_id,
       filename:     uploadResponse.filename,
-      disease:      '',
-      doc_type:     '',
+      disease:      uploadResponse.disease || '',
+      doc_type:     uploadResponse.doc_type || '',
+      authority_level: uploadResponse.authority_level || '',
       status:       uploadResponse.status || 'uploading',
       step:         0,
       step_message: '',
@@ -736,6 +865,11 @@ const SuperAdminDocuments = () => {
                       {doc.disease && doc.doc_type && (
                         <span className="bg-muted/40 text-muted-foreground border border-border/40 font-bold px-3 py-1 rounded-xl text-[10px] uppercase tracking-widest">
                           {doc.disease}
+                        </span>
+                      )}
+                      {doc.authority_level && (
+                        <span className="bg-amber-500/10 text-amber-600 border border-amber-500/20 font-black px-3 py-1 rounded-xl text-[10px] uppercase tracking-widest shadow-sm">
+                          {getAuthorityLabel(doc.authority_level)}
                         </span>
                       )}
                       <div className="flex items-center gap-2 text-[11px] font-bold text-muted-foreground/60">

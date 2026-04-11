@@ -405,8 +405,11 @@ const PromptEditor = ({ promptData, userId, token, onChange }) => {
 /* ─────────────────────────────────────────────
    DOCUMENT TYPE CARD (drag-drop target + source)
 ───────────────────────────────────────────── */
-function DocTypeCard({ docType, colorClass, agentMap, onToggle, onEdit, onDelete, onAgentDragStart, onAgentDrop, isTogglingName }) {
+function DocTypeCard({ docType, colorClass, agentMap, onToggle, onEdit, onDelete, onAgentDragStart, onAgentDrop, isTogglingName, userId, token, onAnchorsUpdated }) {
   const [isDragOver, setIsDragOver] = useState(false);
+  const [isEditingAnchors, setIsEditingAnchors] = useState(false);
+  const [anchorsText, setAnchorsText] = useState('');
+  const [isSavingAnchors, setIsSavingAnchors] = useState(false);
   const isActive = docType.active !== false;
 
   const handleDrop = (e) => {
@@ -416,6 +419,42 @@ function DocTypeCard({ docType, colorClass, agentMap, onToggle, onEdit, onDelete
       const payload = JSON.parse(e.dataTransfer.getData('application/json'));
       onAgentDrop(payload, docType.name);
     } catch {}
+  };
+
+  const handleEditAnchors = () => {
+    setAnchorsText(docType.anchors?.join('\n') || '');
+    setIsEditingAnchors(true);
+  };
+
+  const handleSaveAnchors = async () => {
+    setIsSavingAnchors(true);
+    const newAnchors = anchorsText
+      .split('\n')
+      .map(a => a.trim())
+      .filter(a => a !== '');
+
+    try {
+      const res = await fetch(`${BASE_URL}/admin/config/${DISEASE}/classifier/document-types/anchors`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': userId,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          name: docType.name,
+          anchors: newAnchors,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      onAnchorsUpdated(docType.name, newAnchors);
+      setIsEditingAnchors(false);
+    } catch (e) {
+      console.error('Failed to save anchors:', e);
+    } finally {
+      setIsSavingAnchors(false);
+    }
   };
 
   return (
@@ -453,11 +492,51 @@ function DocTypeCard({ docType, colorClass, agentMap, onToggle, onEdit, onDelete
       </div>
 
       {/* Anchors */}
-      {docType.anchors?.length > 0 && (
-        <div className="mb-5">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/40 mb-2.5 flex items-center gap-2">
+      <div className="mb-5">
+        <div className="flex items-center justify-between mb-2.5">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/40 flex items-center gap-2">
             <Anchor className="w-3.5 h-3.5" /> Identification Anchors
           </p>
+          {!isEditingAnchors && (
+            <button
+              onClick={handleEditAnchors}
+              className="text-[10px] font-black text-primary hover:underline uppercase tracking-widest"
+            >
+              {docType.anchors?.length > 0 ? 'Edit' : 'Add'}
+            </button>
+          )}
+        </div>
+
+        {isEditingAnchors ? (
+          <div className="space-y-3 animate-in fade-in duration-300">
+            <textarea
+              value={anchorsText}
+              onChange={(e) => setAnchorsText(e.target.value)}
+              className="w-full h-32 rounded-xl border-2 border-border/40 bg-muted/5 p-3 text-xs font-mono focus:outline-none focus:border-primary/40 shadow-inner resize-none transition-all"
+              placeholder="Enter keywords (one per line)..."
+            />
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                onClick={handleSaveAnchors}
+                disabled={isSavingAnchors}
+                className="h-8 rounded-lg px-4 bg-primary hover:bg-primary/90 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/20"
+              >
+                {isSavingAnchors ? <Loader2 className="w-3 h-3 animate-spin mr-1.5" /> : <Save className="w-3 h-3 mr-1.5" />}
+                Save
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsEditingAnchors(false)}
+                disabled={isSavingAnchors}
+                className="h-8 rounded-lg px-4 text-[10px] font-black uppercase tracking-widest"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : docType.anchors?.length > 0 ? (
           <div className="flex flex-wrap gap-2">
             {docType.anchors.map(anchor => (
               <span key={anchor} className="text-[11px] font-bold px-3 py-1 bg-muted/50 rounded-xl text-muted-foreground border border-border/40 font-mono shadow-sm">
@@ -465,8 +544,10 @@ function DocTypeCard({ docType, colorClass, agentMap, onToggle, onEdit, onDelete
               </span>
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <p className="text-[11px] text-muted-foreground/40 italic px-1">No anchors defined</p>
+        )}
+      </div>
 
       {/* Agents zone */}
       <div className="mb-5">
@@ -730,6 +811,17 @@ const SuperAdminClassifier = () => {
       ...c,
       document_types: c.document_types.filter(dt => dt.name !== name),
     }));
+  };
+
+  /* ── update anchors ── */
+  const handleAnchorsUpdated = (name, newAnchors) => {
+    setClassifier(c => ({
+      ...c,
+      document_types: c.document_types.map(dt =>
+        dt.name === name ? { ...dt, anchors: newAnchors } : dt
+      ),
+    }));
+    showToast(`Anchors updated for ${toLabel(name)}`);
   };
 
   /* ── drag-drop agents between doc types ── */
@@ -1001,7 +1093,6 @@ const SuperAdminClassifier = () => {
                       key={dt.name}
                       docType={dt}
                       colorClass={getColor(idx)}
-                      allAgents={agents}
                       agentMap={agentMap}
                       userId={userId}
                       token={token}
@@ -1011,6 +1102,7 @@ const SuperAdminClassifier = () => {
                       onAgentDragStart={setDraggingAgent}
                       onAgentDrop={handleAgentDrop}
                       isTogglingName={togglingName}
+                      onAnchorsUpdated={handleAnchorsUpdated}
                     />
                   ))}
                 </div>
