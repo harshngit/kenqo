@@ -2,13 +2,23 @@ import { useSelector } from 'react-redux';
 import { useUserStore } from '../../store';
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
 import {
   Upload, ArrowUpRight, FileText, ChevronDown,
-  Users, CheckCircle2, Clock,
-  TrendingUp, GitBranch, Layers, AlertCircle, RefreshCw, Zap, Loader2
+  Users, CheckCircle2, Clock, Database,
+  TrendingUp, GitBranch, Layers, AlertCircle, RefreshCw, Zap, Loader2, Edit2
 } from 'lucide-react';
 import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
+import { Input } from '../../components/ui/input';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../../components/ui/table';
 
 const diseases = [
   { label: 'Lymphedema', value: 'lymphedema', active: true },
@@ -45,6 +55,19 @@ const SeverityBadge = ({ severity }) => {
   );
 };
 
+const SupportStatusBadge = ({ status }) => {
+  const map = {
+    SUPPORTED:   'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20',
+    PARTIAL:     'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20',
+    UNSUPPORTED: 'bg-red-50 text-red-700 border border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20',
+  };
+  return (
+    <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider border ${map[status] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+      {status}
+    </span>
+  );
+};
+
 const SuperAdminDashboard = () => {
   const authUser = useSelector((state) => state.auth?.user);
   const userId = authUser?.user_id || authUser?.id || '';
@@ -54,6 +77,115 @@ const SuperAdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [data, setData] = useState(null);
+
+  // Active KB Management
+  const [activeKbs, setActiveKbs] = useState({});
+  const [kbInputs, setKbInputs] = useState({});
+  const [updatingKbs, setUpdatingKbs] = useState({});
+  const [fetchingKbs, setFetchingKbs] = useState(false);
+
+  // Coverage Matrix Management
+  const [coverageMatrix, setCoverageMatrix] = useState([]);
+  const [fetchingMatrix, setFetchingMatrix] = useState(false);
+  const [updatingPayers, setUpdatingPayers] = useState({});
+
+  const fetchCoverageMatrix = useCallback(async () => {
+    if (!userId || !selectedDisease) return;
+    setFetchingMatrix(true);
+    try {
+      const res = await fetch(`${BASE_URL}/admin/config/${selectedDisease}/coverage-matrix`, {
+        headers: { 'x-user-id': userId }
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setCoverageMatrix(Array.isArray(json) ? json : json.matrix || []);
+      }
+    } catch (e) {
+      console.error('Failed to fetch coverage matrix:', e);
+    } finally {
+      setFetchingMatrix(false);
+    }
+  }, [userId, selectedDisease]);
+
+  const updatePayerStatus = async (payerId, newStatus) => {
+    setUpdatingPayers(prev => ({ ...prev, [payerId]: true }));
+    try {
+      const res = await fetch(`${BASE_URL}/admin/config/${selectedDisease}/coverage-matrix/${payerId}`, {
+        method: 'PATCH',
+        headers: { 
+          'x-user-id': userId,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ support_status: newStatus })
+      });
+      const json = await res.json();
+      if (res.ok) {
+        toast.success(`Status updated for payer ${payerId}`);
+        setCoverageMatrix(prev => prev.map(p => p.payer_id === payerId ? { ...p, support_status: newStatus } : p));
+      } else {
+        throw new Error(json.message || 'Failed to update status');
+      }
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setUpdatingPayers(prev => ({ ...prev, [payerId]: false }));
+    }
+  };
+
+  const fetchActiveKbs = useCallback(async () => {
+    if (!userId) return;
+    setFetchingKbs(true);
+    try {
+      const res = await fetch(`${BASE_URL}/admin/config/active-kb`, {
+        headers: { 'x-user-id': userId }
+      });
+      const json = await res.json();
+      if (res.ok && json.active_kbs) {
+        setActiveKbs(json.active_kbs);
+        // Initialize inputs with current values
+        const inputs = {};
+        Object.keys(json.active_kbs).forEach(key => {
+          inputs[key] = json.active_kbs[key];
+        });
+        setKbInputs(inputs);
+      }
+    } catch (e) {
+      console.error('Failed to fetch active KBs:', e);
+    } finally {
+      setFetchingKbs(false);
+    }
+  }, [userId]);
+
+  const setActiveKb = async (diseaseValue) => {
+    const kbId = kbInputs[diseaseValue];
+    if (!kbId) {
+      toast.error('Please enter a KB ID');
+      return;
+    }
+
+    setUpdatingKbs(prev => ({ ...prev, [diseaseValue]: true }));
+    try {
+      const res = await fetch(`${BASE_URL}/admin/config/${diseaseValue}/set-active-kb`, {
+        method: 'POST',
+        headers: { 
+          'x-user-id': userId,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ kb_id: kbId })
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        toast.success(`Active KB for ${diseaseValue} updated to ${kbId}`);
+        setActiveKbs(prev => ({ ...prev, [diseaseValue]: kbId }));
+      } else {
+        throw new Error(json.message || 'Failed to update active KB');
+      }
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setUpdatingKbs(prev => ({ ...prev, [diseaseValue]: false }));
+    }
+  };
 
   const fetchDashboard = useCallback(async () => {
     if (!userId) return;
@@ -75,7 +207,9 @@ const SuperAdminDashboard = () => {
 
   useEffect(() => {
     fetchDashboard();
-  }, [fetchDashboard]);
+    fetchActiveKbs();
+    fetchCoverageMatrix();
+  }, [fetchDashboard, fetchActiveKbs, fetchCoverageMatrix]);
 
   const stats = data?.stats || {};
   const pendingRules = data?.rules_pending_review || [];
@@ -301,6 +435,179 @@ const SuperAdminDashboard = () => {
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Active Knowledge Base Section */}
+      <div className="bg-card border-2 border-border/40 rounded-[2.5rem] overflow-hidden shadow-sm hover:shadow-md transition-all">
+        <div className="flex items-center justify-between px-6 py-5 border-b-2 border-border/10 bg-muted/5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shadow-inner">
+              <Database className="w-5 h-5" />
+            </div>
+            <h3 className="text-sm font-black text-foreground uppercase tracking-widest">Active Knowledge Base</h3>
+          </div>
+          <Button 
+            onClick={fetchActiveKbs} 
+            variant="ghost" 
+            size="sm" 
+            className="text-[10px] font-black uppercase tracking-widest text-primary hover:bg-primary/5 gap-2 h-8 px-3 rounded-lg"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${fetchingKbs ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
+        
+        <div className="p-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {diseases.map((d) => {
+              const isActive = activeKbs[d.value];
+              const isUpdating = updatingKbs[d.value];
+              
+              return (
+                <div key={d.value} className="flex flex-col sm:flex-row sm:items-center justify-between p-6 rounded-3xl border-2 border-border/40 bg-muted/5 gap-6 hover:border-primary/20 transition-all group">
+                  <div className="space-y-2 min-w-0">
+                    <div className="flex items-center gap-3">
+                      <span className="text-base font-black tracking-tight text-foreground truncate">{d.label}</span>
+                      {isActive ? (
+                        <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-widest whitespace-nowrap">
+                          {isActive}
+                        </span>
+                      ) : (
+                        <span className="bg-amber-500/10 text-amber-600 border border-amber-500/20 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-widest whitespace-nowrap">
+                          No Active KB
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest">Disease Identifier: {d.value}</p>
+                  </div>
+                  
+                  <div className="flex items-center gap-3 shrink-0">
+                    <div className="relative flex-1 sm:w-48">
+                      <Input
+                        value={kbInputs[d.value] || ''}
+                        onChange={(e) => setKbInputs(prev => ({ ...prev, [d.value]: e.target.value }))}
+                        placeholder="Enter KB ID..."
+                        className="h-11 pl-4 pr-10 rounded-xl border-2 border-border/60 focus:border-primary/40 text-xs font-bold bg-white/50"
+                        disabled={isUpdating}
+                      />
+                      <Edit2 className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground opacity-40" />
+                    </div>
+                    <Button 
+                      onClick={() => setActiveKb(d.value)}
+                      disabled={isUpdating || !kbInputs[d.value]}
+                      className="h-11 px-5 rounded-xl font-black text-xs bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all active:scale-95"
+                    >
+                      {isUpdating ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        'Set Active'
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Coverage Matrix Section */}
+      <div className="bg-card border-2 border-border/40 rounded-[2.5rem] overflow-hidden shadow-sm hover:shadow-md transition-all">
+        <div className="flex items-center justify-between px-6 py-5 border-b-2 border-border/10 bg-muted/5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-600 shadow-inner">
+              <TrendingUp className="w-5 h-5" />
+            </div>
+            <h3 className="text-sm font-black text-foreground uppercase tracking-widest">Coverage Matrix — <span className="text-primary">{selectedDisease}</span></h3>
+          </div>
+          <Button 
+            onClick={fetchCoverageMatrix} 
+            variant="ghost" 
+            size="sm" 
+            className="text-[10px] font-black uppercase tracking-widest text-primary hover:bg-primary/5 gap-2 h-8 px-3 rounded-lg"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${fetchingMatrix ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
+
+        <div className="overflow-x-auto">
+          {fetchingMatrix && coverageMatrix.length === 0 ? (
+            <div className="p-20 flex flex-col items-center justify-center gap-4 opacity-40">
+              <Loader2 className="w-10 h-10 animate-spin text-primary" />
+              <p className="text-xs font-black uppercase tracking-widest">Fetching Matrix...</p>
+            </div>
+          ) : coverageMatrix.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent border-b-2 border-border/10">
+                  <TableHead className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Payer Name</TableHead>
+                  <TableHead className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Condition</TableHead>
+                  <TableHead className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Coverage %</TableHead>
+                  <TableHead className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Support Status</TableHead>
+                  <TableHead className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {coverageMatrix.map((item) => (
+                  <TableRow key={item.payer_id} className="group hover:bg-primary/[0.02] border-b border-border/10 transition-colors">
+                    <TableCell className="px-8 py-5">
+                      <p className="font-black text-sm tracking-tight text-foreground">{item.payer_name}</p>
+                      <p className="text-[10px] font-bold text-muted-foreground/50 font-mono">ID: {item.payer_id}</p>
+                    </TableCell>
+                    <TableCell className="px-8 py-5">
+                      <span className="text-xs font-bold text-foreground/80">{item.condition}</span>
+                    </TableCell>
+                    <TableCell className="px-8 py-5">
+                      <div className="flex items-center gap-3 w-32">
+                        <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden shadow-inner">
+                          <div 
+                            className={`h-full transition-all duration-1000 ${
+                              item.coverage_pct >= 80 ? 'bg-emerald-500' : item.coverage_pct >= 50 ? 'bg-amber-500' : 'bg-red-500'
+                            }`}
+                            style={{ width: `${item.coverage_pct}%` }}
+                          />
+                        </div>
+                        <span className="text-[11px] font-black text-muted-foreground w-8">{item.coverage_pct}%</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="px-8 py-5">
+                      <SupportStatusBadge status={item.support_status} />
+                    </TableCell>
+                    <TableCell className="px-8 py-5 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {updatingPayers[item.payer_id] ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                        ) : (
+                          <div className="flex gap-1">
+                            {['SUPPORTED', 'PARTIAL', 'UNSUPPORTED'].map((status) => (
+                              <button
+                                key={status}
+                                onClick={() => updatePayerStatus(item.payer_id, status)}
+                                className={`w-2.5 h-2.5 rounded-full border transition-all hover:scale-125 ${
+                                  item.support_status === status 
+                                    ? status === 'SUPPORTED' ? 'bg-emerald-500 border-emerald-600 scale-110' 
+                                      : status === 'PARTIAL' ? 'bg-amber-500 border-amber-600 scale-110'
+                                      : 'bg-red-500 border-red-600 scale-110'
+                                    : 'bg-muted border-border'
+                                }`}
+                                title={`Set to ${status}`}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <div className="p-20 text-center opacity-40">
+              <p className="text-sm font-black uppercase tracking-widest">No coverage data available</p>
+            </div>
+          )}
         </div>
       </div>
 

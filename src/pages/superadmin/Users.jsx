@@ -31,7 +31,7 @@ const SuperAdminUsers = () => {
   const [error, setError] = useState(null);
 
   // Manage Role Dialog state
-  const [roleDialog, setRoleDialog] = useState({ open: false, user: null });
+  const [roleDialog, setRoleDialog] = useState({ open: false, user: null, newRole: '' });
   const [isUpdatingRole, setIsUpdatingRole] = useState(false);
   const [roleError, setRoleError] = useState(null);
 
@@ -76,20 +76,25 @@ const SuperAdminUsers = () => {
 
   const openRoleDialog = (user) => {
     setRoleError(null);
-    setRoleDialog({ open: true, user });
+    setRoleDialog({ 
+      open: true, 
+      user, 
+      newRole: user.role === 'superadmin' ? 'admin' : 'superadmin' 
+    });
   };
 
   const closeRoleDialog = () => {
-    setRoleDialog({ open: false, user: null });
+    setRoleDialog({ open: false, user: null, newRole: '' });
     setRoleError(null);
   };
 
-  // Superadmin → admin only (no promotion back to superadmin)
-  const canChangeRole = (user) => user.role === 'superadmin';
+  // Superadmin <-> admin only
+  const canChangeRole = (user) => (user.role === 'superadmin' || user.role === 'admin') && user.user_id !== superadminId;
 
   const handleRoleChange = async () => {
     const targetUser = roleDialog.user;
-    if (!targetUser) return;
+    const newRole = roleDialog.newRole;
+    if (!targetUser || !newRole) return;
     setIsUpdatingRole(true);
     setRoleError(null);
     try {
@@ -101,7 +106,7 @@ const SuperAdminUsers = () => {
         },
         body: JSON.stringify({ 
           user_id: targetUser.user_id, 
-          new_role: 'admin' 
+          new_role: newRole 
         }),
       });
       const data = await response.json();
@@ -111,7 +116,7 @@ const SuperAdminUsers = () => {
       // Update local state
       setUsers((prev) =>
         prev.map((u) =>
-          u.user_id === targetUser.user_id ? { ...u, role: 'admin' } : u
+          u.user_id === targetUser.user_id ? { ...u, role: newRole } : u
         )
       );
       closeRoleDialog();
@@ -403,9 +408,12 @@ const SuperAdminUsers = () => {
               <div className="bg-muted/30 border-2 border-border/40 rounded-[1.5rem] p-6 space-y-2 shadow-inner">
                 <div className="flex items-center justify-between">
                   <p className="font-black text-lg tracking-tight">{roleDialog.user.full_name || 'N/A'}</p>
-                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 bg-violet-500/10 text-violet-600 border-violet-500/20 shadow-sm">
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                    Superadmin
+                  <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 shadow-sm ${roleConfig[roleDialog.user.role]?.className}`}>
+                    {(() => {
+                      const Icon = roleConfig[roleDialog.user.role]?.icon || Users;
+                      return <Icon className="w-3.5 h-3.5" />;
+                    })()}
+                    {roleConfig[roleDialog.user.role]?.label}
                   </div>
                 </div>
                 <p className="text-sm font-bold text-muted-foreground/70">{roleDialog.user.email}</p>
@@ -415,25 +423,57 @@ const SuperAdminUsers = () => {
                 <label className="text-[11px] font-black text-muted-foreground uppercase tracking-[0.2em] ml-1">
                   Change Role To
                 </label>
-                <div className="group flex items-center gap-4 p-5 border-2 border-primary/40 bg-primary/5 rounded-[1.5rem] shadow-sm transition-all hover:shadow-md">
-                  <div className="w-12 h-12 bg-primary/15 rounded-2xl flex items-center justify-center shadow-inner shrink-0">
-                    <ShieldAlert className="w-6 h-6 text-primary" />
+                <div className={`group flex items-center gap-4 p-5 border-2 rounded-[1.5rem] shadow-sm transition-all hover:shadow-md ${
+                  roleDialog.newRole === 'superadmin' 
+                    ? 'border-violet-500/40 bg-violet-500/5' 
+                    : 'border-primary/40 bg-primary/5'
+                }`}>
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-inner shrink-0 ${
+                    roleDialog.newRole === 'superadmin' ? 'bg-violet-500/15' : 'bg-primary/15'
+                  }`}>
+                    {roleDialog.newRole === 'superadmin' ? (
+                      <ShieldCheck className="w-6 h-6 text-violet-600" />
+                    ) : (
+                      <ShieldAlert className="w-6 h-6 text-primary" />
+                    )}
                   </div>
                   <div>
-                    <p className="font-black text-base tracking-tight text-primary">Admin Access</p>
+                    <p className={`font-black text-base tracking-tight ${
+                      roleDialog.newRole === 'superadmin' ? 'text-violet-600' : 'text-primary'
+                    }`}>
+                      {roleConfig[roleDialog.newRole]?.label} Access
+                    </p>
                     <p className="text-xs font-medium text-muted-foreground/80 leading-relaxed mt-0.5">
-                      Grant permissions to manage users, configurations, and system settings.
+                      {roleDialog.newRole === 'superadmin' 
+                        ? 'Grant full system-wide administrative privileges and access to all settings.' 
+                        : 'Grant permissions to manage users, configurations, and system settings.'}
                     </p>
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-start gap-4 p-5 bg-amber-500/5 border-2 border-amber-500/20 rounded-[1.5rem]">
-                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className={`flex items-start gap-4 p-5 rounded-[1.5rem] border-2 ${
+                roleDialog.newRole === 'admin' 
+                  ? 'bg-amber-500/5 border-amber-500/20' 
+                  : 'bg-emerald-500/5 border-emerald-500/20'
+              }`}>
+                {roleDialog.newRole === 'admin' ? (
+                  <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                ) : (
+                  <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                )}
                 <div className="space-y-1">
-                  <p className="text-xs font-black uppercase tracking-wider text-amber-700">Warning: Demotion</p>
-                  <p className="text-xs font-bold text-amber-700/70 leading-relaxed">
-                    This action will demote <strong>{roleDialog.user.full_name}</strong> to Admin. This cannot be reversed from this dashboard.
+                  <p className={`text-xs font-black uppercase tracking-wider ${
+                    roleDialog.newRole === 'admin' ? 'text-amber-700' : 'text-emerald-700'
+                  }`}>
+                    {roleDialog.newRole === 'admin' ? 'Warning: Demotion' : 'System Promotion'}
+                  </p>
+                  <p className={`text-xs font-bold ${
+                    roleDialog.newRole === 'admin' ? 'text-amber-700/70' : 'text-emerald-700/70'
+                  } leading-relaxed`}>
+                    {roleDialog.newRole === 'admin' 
+                      ? `This action will demote ${roleDialog.user.full_name} to Admin. A GCS folder will be automatically created.`
+                      : `This action will promote ${roleDialog.user.full_name} to Superadmin with full system access.`}
                   </p>
                 </div>
               </div>
@@ -458,7 +498,11 @@ const SuperAdminUsers = () => {
             <Button
               onClick={handleRoleChange}
               disabled={isUpdatingRole}
-              className="rounded-2xl font-black text-sm h-12 px-8 bg-violet-600 hover:bg-violet-700 text-white shadow-xl shadow-violet-500/25 gap-2 transition-all active:scale-95"
+              className={`rounded-2xl font-black text-sm h-12 px-8 shadow-xl transition-all active:scale-95 gap-2 ${
+                roleDialog.newRole === 'superadmin' 
+                  ? 'bg-violet-600 hover:bg-violet-700 text-white shadow-violet-500/25' 
+                  : 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-primary/25'
+              }`}
             >
               {isUpdatingRole ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCog className="w-4 h-4" />}
               {isUpdatingRole ? 'Updating Access…' : 'Confirm Role Change'}

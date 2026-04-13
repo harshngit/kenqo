@@ -70,6 +70,23 @@ const VerdictBadge = ({ verdict }) => {
   );
 };
 
+const BlockingSeverityDot = ({ severity }) => {
+  if (!severity) return null;
+  const map = {
+    HARD_BLOCK: 'text-red-500',
+    SOFT_BLOCK: 'text-amber-500',
+    ADVISORY: 'text-blue-500',
+  };
+  return (
+    <span 
+      className={`cursor-help ${map[severity] || 'text-gray-400'}`} 
+      title={severity.replace(/_/g, ' ')}
+    >
+      ●
+    </span>
+  );
+};
+
 const MergeRuleCard = ({ r }) => {
    const [expanded, setExpanded] = useState(false);
    if (!r) return null;
@@ -765,6 +782,7 @@ const SuperAdminRules = () => {
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-[10px] font-bold text-muted-foreground tracking-widest uppercase">{r.rule_id}</span>
                 <StatusBadge status={status} />
+                <BlockingSeverityDot severity={r.blocking_severity} />
               </div>
               <div className="font-mono font-extrabold text-base tracking-tight truncate">{r.rule_name || 'unnamed_rule'}</div>
               <div className="text-sm text-muted-foreground mt-1 truncate">{r.description || 'No description'}</div>
@@ -1215,6 +1233,45 @@ const SuperAdminRules = () => {
                         className="h-10 rounded-xl border-2 border-border/40 bg-card text-xs font-black focus:border-primary/40 transition-all"
                       />
                     </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 ml-1">Blocking Severity</label>
+                        <select 
+                          value={editForm.blocking_severity || ''} 
+                          onChange={(e) => setEditForm(prev => ({ ...prev, blocking_severity: e.target.value }))}
+                          className="w-full h-10 px-3 rounded-xl border-2 border-border/40 bg-card text-xs font-black focus:border-primary/40 focus:outline-none transition-all"
+                        >
+                          <option value="">Select Severity</option>
+                          <option value="HARD_BLOCK">HARD BLOCK</option>
+                          <option value="SOFT_BLOCK">SOFT BLOCK</option>
+                          <option value="ADVISORY">ADVISORY</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 ml-1">Verifiable From</label>
+                        <select 
+                          value={editForm.verifiable_from || ''} 
+                          onChange={(e) => setEditForm(prev => ({ ...prev, verifiable_from: e.target.value }))}
+                          className="w-full h-10 px-3 rounded-xl border-2 border-border/40 bg-card text-xs font-black focus:border-primary/40 focus:outline-none transition-all"
+                        >
+                          <option value="">Select Source</option>
+                          <option value="PATIENT_RECORD">PATIENT RECORD</option>
+                          <option value="PRESCRIPTION">PRESCRIPTION</option>
+                          <option value="PAYER_PORTAL">PAYER PORTAL</option>
+                          <option value="SYSTEM">SYSTEM</option>
+                          <option value="MANUAL_REVIEW">MANUAL REVIEW</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 ml-1">Delta From Base</label>
+                      <Input 
+                        value={editForm.delta_from_base || ''} 
+                        onChange={(e) => setEditForm(prev => ({ ...prev, delta_from_base: e.target.value || null }))}
+                        className="h-10 rounded-xl border-2 border-border/40 bg-card text-xs font-black focus:border-primary/40 transition-all"
+                        placeholder="Leave empty if no delta"
+                      />
+                    </div>
                     <div className="space-y-1.5">
                       <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 ml-1">Stored Message</label>
                       <textarea 
@@ -1475,44 +1532,96 @@ const SuperAdminRules = () => {
                             const flattened = [];
                             
                             const processParam = (key, val, prefix = '') => {
-                              if (val == null) return;
+                              if (val == null && key !== 'delta_from_base') return;
                               const label = prefix ? `${prefix} - ${toTitleCase(key)}` : toTitleCase(key);
                               
                               if (Array.isArray(val)) {
-                                if (val.length > 0) flattened.push({ label, val });
-                              } else if (typeof val === 'object') {
+                                if (val.length > 0) flattened.push({ key, label, val });
+                              } else if (val != null && typeof val === 'object') {
                                 Object.entries(val).forEach(([k, v]) => processParam(k, v, label));
                               } else {
-                                flattened.push({ label, val });
+                                flattened.push({ key, label, val });
                               }
                             };
 
                             Object.entries(params).forEach(([k, v]) => processParam(k, v));
 
+                            // Add new fields to the end of the flattened list if they exist in the rule but not in parameters
+                            const newFields = ['blocking_severity', 'verifiable_from', 'delta_from_base'];
+                            newFields.forEach(field => {
+                              if (detailRule && detailRule[field] !== undefined) {
+                                // Only add if not already in flattened (though they shouldn't be in parameters)
+                                if (!flattened.some(f => f.key === field)) {
+                                  flattened.push({ key: field, label: toTitleCase(field), val: detailRule[field] });
+                                }
+                              }
+                            });
+
                             if (flattened.length === 0) {
                               return <p className="text-[10px] font-medium text-muted-foreground/60 italic text-center py-2">No parameters defined</p>;
                             }
 
-                            return flattened.map((item, i) => (
-                              <div key={i} className="flex items-start justify-between gap-4 py-2 border-b border-border/10 last:border-0">
-                                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/40">{item.label}</span>
-                                <div className="text-right">
-                                  {Array.isArray(item.val) ? (
-                                    <div className="flex flex-wrap justify-end gap-1.5">
-                                      {item.val.map((v, idx) => (
-                                        <span key={idx} className="bg-primary/10 text-primary text-[10px] font-black px-2 py-0.5 rounded">
-                                          {String(v)}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  ) : typeof item.val === 'boolean' ? (
-                                    <span className="text-xs font-bold text-foreground">{item.val ? 'Yes' : 'No'}</span>
-                                  ) : (
-                                    <span className="text-xs font-bold text-foreground">{String(item.val)}</span>
-                                  )}
+                            return flattened.map((item, i) => {
+                              // Custom rendering for new fields
+                              if (item.key === 'blocking_severity') {
+                                const severityMap = {
+                                  HARD_BLOCK: 'bg-red-500/10 text-red-600 border-red-500/20',
+                                  SOFT_BLOCK: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
+                                  ADVISORY: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+                                };
+                                return (
+                                  <div key={i} className="flex items-start justify-between gap-4 py-2 border-b border-border/10 last:border-0">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/40">{item.label}</span>
+                                    <span className={`text-[10px] font-black px-2 py-0.5 rounded border ${severityMap[item.val] || 'bg-muted text-muted-foreground'}`}>
+                                      {String(item.val).replace(/_/g, ' ')}
+                                    </span>
+                                  </div>
+                                );
+                              }
+
+                              if (item.key === 'verifiable_from') {
+                                return (
+                                  <div key={i} className="flex items-start justify-between gap-4 py-2 border-b border-border/10 last:border-0">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/40">{item.label}</span>
+                                    <span className="text-[10px] font-black px-2 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200 uppercase tracking-tight">
+                                      {String(item.val).replace(/_/g, ' ')}
+                                    </span>
+                                  </div>
+                                );
+                              }
+
+                              if (item.key === 'delta_from_base') {
+                                return (
+                                  <div key={i} className={`flex items-start justify-between gap-4 py-2 border-b border-border/10 last:border-0 rounded-lg px-2 -mx-2 ${item.val ? 'bg-amber-500/5' : ''}`}>
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/40">{item.label}</span>
+                                    <span className={`text-xs font-bold ${item.val ? 'text-amber-700' : 'text-muted-foreground/40'}`}>
+                                      {item.val ? `Δ ${item.val}` : '—'}
+                                    </span>
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <div key={i} className="flex items-start justify-between gap-4 py-2 border-b border-border/10 last:border-0">
+                                  <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/40">{item.label}</span>
+                                  <div className="text-right">
+                                    {Array.isArray(item.val) ? (
+                                      <div className="flex flex-wrap justify-end gap-1.5">
+                                        {item.val.map((v, idx) => (
+                                          <span key={idx} className="bg-primary/10 text-primary text-[10px] font-black px-2 py-0.5 rounded">
+                                            {String(v)}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    ) : typeof item.val === 'boolean' ? (
+                                      <span className="text-xs font-bold text-foreground">{item.val ? 'Yes' : 'No'}</span>
+                                    ) : (
+                                      <span className="text-xs font-bold text-foreground">{String(item.val)}</span>
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
-                            ));
+                              );
+                            });
                           })()}
                         </div>
                       </div>
