@@ -21,6 +21,7 @@ import {
   Info,
   ChevronDown,
   ChevronUp,
+  History,
 } from 'lucide-react';
 import {
   Dialog,
@@ -31,6 +32,7 @@ import {
   DialogFooter,
   DialogClose,
 } from '../../components/ui/dialog';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../../components/ui/select';
 import { toast } from 'sonner';
 
 const BASE_URL = 'https://kenqo-api-409744260053.asia-south1.run.app';
@@ -73,9 +75,9 @@ const VerdictBadge = ({ verdict }) => {
 const BlockingSeverityDot = ({ severity }) => {
   if (!severity) return null;
   const map = {
-    HARD_BLOCK: 'text-red-500',
-    SOFT_BLOCK: 'text-amber-500',
-    ADVISORY: 'text-blue-500',
+    HARD_DENY: 'text-red-500',
+    SOFT_WARN: 'text-amber-500',
+    INFO: 'text-blue-500',
   };
   return (
     <span 
@@ -149,6 +151,17 @@ const MergeRuleCard = ({ r }) => {
         {/* EXPANDED LEVEL */}
         {expanded && (
           <div className="border-t border-border/10 mt-4 pt-4 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+            {r.parameters?._parameter_conflict && (
+              <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 mb-3">
+                <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-0.5">Parameter Conflict</p>
+                  <p className="text-[10px] text-amber-700/80 leading-relaxed">
+                    {r.parameters._conflict_detail || 'Structural parameter mismatch detected — review before merging.'}
+                  </p>
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div className="p-3 rounded-xl bg-muted/10 border border-border/20">
                 <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground/40 mb-1">Check Type</p>
@@ -174,6 +187,7 @@ const MergeRuleCard = ({ r }) => {
                   const flattened = [];
                   const process = (obj, prefix = '') => {
                     Object.entries(obj || {}).forEach(([k, v]) => {
+                      if (k.startsWith('_')) return; // skip internal conflict flags
                       if (v == null) return;
                       const label = prefix ? `${prefix} - ${toTitleCase(k)}` : toTitleCase(k);
                       if (typeof v === 'object' && !Array.isArray(v)) process(v, label);
@@ -248,6 +262,14 @@ const SuperAdminRules = () => {
   const [mergeSuggestions, setMergeSuggestions] = useState([]);
   const [isRebuilding, setIsRebuilding] = useState(false);
   const [pollingBanner, setPollingBanner] = useState(false);
+
+  // New states for version history and filtering
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyVersions, setHistoryVersions] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyRuleName, setHistoryRuleName] = useState('');
+  const [latestOnly, setLatestOnly] = useState(true);
+  const [confidenceThreshold, setConfidenceThreshold] = useState(0.85);
   
   const initialSuggestionCount = useRef(0);
   const rebuildStartTime = useRef(0);
@@ -261,6 +283,10 @@ const SuperAdminRules = () => {
   const [chunksLoading, setChunksLoading] = useState(false);
   const [chunks, setChunks] = useState([]);
   const [chunksSearch, setChunksSearch] = useState('');
+  const [hcpcsRef, setHcpcsRef] = useState({});
+  const [hcpcsLoaded, setHcpcsLoaded] = useState(false);
+  const [hcpcsLoading, setHcpcsLoading] = useState(false);
+  const [hcpcsSearch, setHcpcsSearch] = useState('');
   const [sourceDocFilter, setSourceDocFilter] = useState('all');
   const [ruleTypeFilter, setRuleTypeFilter] = useState('all');
 
@@ -292,7 +318,7 @@ const SuperAdminRules = () => {
     if (!userId) return;
     setIsLoading(true);
     try {
-      const res = await fetch(`${BASE_URL}/admin/rules/${DISEASE}`, { headers: { 'x-user-id': userId } });
+      const res = await fetch(`${BASE_URL}/admin/rules/${DISEASE}?latest_only=${latestOnly}`, { headers: { 'x-user-id': userId } });
       const json = await res.json();
       if (!res.ok || json.success === false) throw new Error(json.message || 'Failed to load rules');
       const arr = json.rules || json.rule || json || [];
@@ -303,7 +329,7 @@ const SuperAdminRules = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [userId]);
+  }, [userId, latestOnly]);
 
   const loadMerge = useCallback(async () => {
     if (!userId) return;
@@ -337,14 +363,41 @@ const SuperAdminRules = () => {
     }
   }, [userId]);
 
+  const loadHcpcsRef = useCallback(async (rebuild = false) => {
+    if (!userId) return;
+    setHcpcsLoading(true);
+    try {
+      const url = rebuild
+        ? `${BASE_URL}/admin/rules/${DISEASE}/hcpcs-reference/rebuild`
+        : `${BASE_URL}/admin/rules/${DISEASE}/hcpcs-reference`;
+      const res = await fetch(url, {
+        method: rebuild ? 'POST' : 'GET',
+        headers: { 'x-user-id': userId }
+      });
+      const json = await res.json();
+      if (!res.ok || json.success === false) throw new Error(json.message || 'Failed');
+      setHcpcsRef(json.reference || {});
+      setHcpcsLoaded(true);
+      if (rebuild) toast.success(json.message || 'HCPCS reference rebuilt');
+    } catch (e) {
+      toast.error(e.message || 'Failed to load HCPCS reference');
+    } finally {
+      setHcpcsLoading(false);
+    }
+  }, [userId]);
+
   useEffect(() => {
     if (!rulesLoaded) loadRules();
   }, [rulesLoaded, loadRules]);
 
   useEffect(() => {
+    loadRules();
+  }, [latestOnly, loadRules]);
+
+  useEffect(() => {
     if (tab === 'merge' && !mergeLoaded) loadMerge();
-    if (tab === 'chunks' && !chunksLoaded) loadChunks();
-  }, [tab, mergeLoaded, chunksLoaded, loadMerge, loadChunks]);
+    if (tab === 'hcpcs' && !hcpcsLoaded) loadHcpcsRef();
+  }, [tab, mergeLoaded, chunksLoaded, hcpcsLoaded, loadMerge, loadChunks, loadHcpcsRef]);
 
   useEffect(() => {
     return () => {
@@ -429,6 +482,27 @@ const SuperAdminRules = () => {
     setDetailOpen(true);
   };
 
+  const openHistory = async (rule) => {
+    setHistoryVersions([]);
+    setHistoryRuleName(rule.rule_name || rule.rule_id);
+    setHistoryLoading(true);
+    setHistoryOpen(true);
+    try {
+      const res = await fetch(
+        `${BASE_URL}/admin/rules/${DISEASE}/${rule.rule_id}/history`,
+        { headers: { 'x-user-id': userId } }
+      );
+      const json = await res.json();
+      if (!res.ok || json.success === false) throw new Error(json.message || 'Failed to load history');
+      setHistoryVersions(json.versions || []);
+    } catch (e) {
+      toast.error(e.message || 'Failed to load history');
+      setHistoryOpen(false);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
   const handleUpdateRule = async () => {
     if (!userId || !detailRule?.rule_id) return;
     setIsSaving(true);
@@ -461,7 +535,7 @@ const SuperAdminRules = () => {
       const res = await fetch(`${BASE_URL}/admin/rules/${DISEASE}/build-merge-suggestions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
-        body: JSON.stringify({ user_id: userId }),
+        body: JSON.stringify({ user_id: userId, confidence_threshold: confidenceThreshold }),
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
@@ -726,33 +800,41 @@ const SuperAdminRules = () => {
               />
             </div>
 
-            <div className="relative">
-              <select
-                value={sourceDocFilter}
-                onChange={(e) => setSourceDocFilter(e.target.value)}
-                className="h-10 pl-3 pr-9 bg-card border-2 border-border/40 rounded-xl text-xs font-black focus:outline-none focus:border-primary/40 transition-all cursor-pointer min-w-[160px] appearance-none"
-              >
-                <option value="all">All Source Docs</option>
+            <Select value={sourceDocFilter} onValueChange={setSourceDocFilter}>
+              <SelectTrigger className="h-10 pl-3 pr-9 bg-card border-2 border-border/40 rounded-xl text-xs font-black focus:outline-none focus:border-primary/40 transition-all cursor-pointer min-w-[160px] appearance-none">
+                <SelectValue placeholder="All Source Docs" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Source Docs</SelectItem>
                 {uniqueSourceDocs.map(doc => (
-                  <option key={doc} value={doc}>{doc.split('/').pop()}</option>
+                  <SelectItem key={doc} value={doc}>{doc.split('/').pop()}</SelectItem>
                 ))}
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/40 pointer-events-none" />
-            </div>
+              </SelectContent>
+            </Select>
 
-            <div className="relative">
-              <select
-                value={ruleTypeFilter}
-                onChange={(e) => setRuleTypeFilter(e.target.value)}
-                className="h-10 pl-3 pr-9 bg-card border-2 border-border/40 rounded-xl text-xs font-black focus:outline-none focus:border-primary/40 transition-all cursor-pointer min-w-[140px] appearance-none"
-              >
-                <option value="all">All Rule Types</option>
+            <Select value={ruleTypeFilter} onValueChange={setRuleTypeFilter}>
+              <SelectTrigger className="h-10 pl-3 pr-9 bg-card border-2 border-border/40 rounded-xl text-xs font-black focus:outline-none focus:border-primary/40 transition-all cursor-pointer min-w-[140px] appearance-none">
+                <SelectValue placeholder="All Rule Types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Rule Types</SelectItem>
                 {uniqueRuleTypes.map(type => (
-                  <option key={type} value={type}>{type}</option>
+                  <SelectItem key={type} value={type}>{type}</SelectItem>
                 ))}
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/40 pointer-events-none" />
-            </div>
+              </SelectContent>
+            </Select>
+
+            <button
+              onClick={() => { setLatestOnly(prev => !prev); setRulesLoaded(false); }}
+              className={`h-10 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 transition-all ${
+                latestOnly
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'bg-card text-muted-foreground border-border/40 hover:text-foreground'
+              }`}
+              title={latestOnly ? 'Showing latest versions only — click to show all including history' : 'Showing all versions — click to show latest only'}
+            >
+              {latestOnly ? 'Latest Only' : 'All Versions'}
+            </button>
           </div>
         )}
       </div>
@@ -840,6 +922,15 @@ const SuperAdminRules = () => {
                 <Button 
                   variant="ghost" 
                   size="sm" 
+                  className="h-8 w-8 p-0 rounded-lg hover:bg-violet-500/10 hover:text-violet-500 transition-colors" 
+                  onClick={() => openHistory(r)}
+                  title="Version History"
+                >
+                  <History className="w-4 h-4" />
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
                   className="h-8 w-8 p-0 rounded-lg hover:bg-primary/10 hover:text-primary transition-colors" 
                   onClick={() => openDetail(r)}
                   title="View Details"
@@ -917,6 +1008,19 @@ const SuperAdminRules = () => {
                 <span className={`text-[10px] font-black uppercase tracking-[0.15em] px-3 py-1 rounded-full border ${confColor}`}>
                   {confPct}% Merge Confidence
                 </span>
+                {s.same_document === true && (
+                  <span className="text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20">
+                    Same Document
+                  </span>
+                )}
+                {s.needs_synthesis && (
+                  <span 
+                    className="text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20 cursor-help" 
+                    title="LLM_REASONING rules — run Analyse first to synthesize evaluation criteria"
+                  >
+                    Needs Analysis
+                  </span>
+                )}
               </div>
               <p className="text-xs font-medium text-muted-foreground leading-relaxed italic line-clamp-2">
                 "{s.reason}"
@@ -932,7 +1036,12 @@ const SuperAdminRules = () => {
               <Button variant="ghost" className="h-10 rounded-xl font-black uppercase tracking-widest text-[10px] text-destructive hover:bg-destructive/5" onClick={() => dismissMerge(s)}>
                 Dismiss
               </Button>
-              <Button className="h-10 px-6 rounded-xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-primary/20" onClick={() => startMerge(s)}>
+              <Button 
+                className="h-10 px-6 rounded-xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-primary/20 disabled:opacity-40 disabled:cursor-not-allowed" 
+                onClick={() => !s.needs_synthesis && startMerge(s)}
+                disabled={s.needs_synthesis === true}
+                title={s.needs_synthesis ? 'Run Analyse first — LLM_REASONING rules require AI synthesis before merging' : 'Merge rules'}
+              >
                 <Merge className="w-3.5 h-3.5" /> Merge Rules
               </Button>
             </div>
@@ -984,13 +1093,13 @@ const SuperAdminRules = () => {
       </div>
 
       <div className="flex flex-wrap items-center gap-2 bg-muted/40 p-1 rounded-2xl w-fit">
-        {['pending', 'approved', 'disabled', 'merge'].map(t => (
+        {['pending', 'approved', 'disabled', 'merge', 'hcpcs'].map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={`h-10 px-5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${tab === t ? 'bg-background shadow border border-border/60 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
           >
-            {t === 'merge' ? 'Merge Suggestions' : t}
+            {t === 'merge' ? 'Merge Suggestions' : t === 'hcpcs' ? 'HCPCS Ref' : t}
           </button>
         ))}
       </div>
@@ -1029,20 +1138,34 @@ const SuperAdminRules = () => {
               )}
               <div className="flex items-center justify-between">
                 <div className="text-sm text-muted-foreground font-medium">Cached suggestions from storage.</div>
-                <Button 
-                  onClick={rebuildSuggestions} 
-                  disabled={isRebuilding} 
-                  className="h-11 rounded-xl font-black min-w-[160px]"
-                >
-                  {isRebuilding ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Building...
-                    </>
-                  ) : (
-                    'Rebuild Suggestions'
-                  )}
-                </Button>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Min Confidence</span>
+                    <input 
+                      type="number" 
+                      min="0.5" 
+                      max="1.0" 
+                      step="0.05" 
+                      value={confidenceThreshold} 
+                      onChange={(e) => setConfidenceThreshold(parseFloat(e.target.value))} 
+                      className="w-16 h-8 text-center text-xs font-black border-2 border-border/40 rounded-lg bg-card focus:outline-none focus:border-primary/40" 
+                    />
+                  </div>
+                  <Button 
+                    onClick={rebuildSuggestions} 
+                    disabled={isRebuilding} 
+                    className="h-11 rounded-xl font-black min-w-[160px]"
+                  >
+                    {isRebuilding ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Building...
+                      </>
+                    ) : (
+                      'Rebuild Suggestions'
+                    )}
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -1063,58 +1186,134 @@ const SuperAdminRules = () => {
         </div>
       )}
 
-      {tab === 'chunks' && (
+      {tab === 'hcpcs' && (
         <div className="space-y-4">
-          <Card>
-            <CardContent className="pt-6 flex items-center justify-between gap-3">
-              <div className="relative w-96 max-w-full">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search chunks by source or summary..."
-                  value={chunksSearch}
-                  onChange={(e) => setChunksSearch(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Layers className="w-4 h-4" /> {filteredChunks.length} chunks
-              </div>
-            </CardContent>
-          </Card>
-
-          {chunksLoading && (
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="w-4 h-4 animate-spin" /> Loading chunks...
+          <div className="flex items-center justify-between gap-4">
+            <div className="relative w-72">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by key or rule ID..."
+                value={hcpcsSearch}
+                onChange={(e) => setHcpcsSearch(e.target.value)}
+                className="pl-9 h-10 text-xs font-black"
+              />
             </div>
-          )}
-
-          {!chunksLoading && filteredChunks.length === 0 && (
-            <div className="text-sm text-muted-foreground">No chunks found.</div>
-          )}
-
-          <div className="grid grid-cols-1 gap-4">
-            {filteredChunks.map((c) => (
-              <Card key={c.chunk_id}>
-                <CardContent className="pt-6">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[10px] font-bold text-muted-foreground tracking-widest uppercase">{c.chunk_id}</div>
-                      <div className="font-mono font-extrabold text-sm truncate">{(c.source_doc || '').split('/').pop()}</div>
-                      <div className="text-sm text-muted-foreground mt-1 truncate">{c.summary || 'No summary'}</div>
-                      <div className="text-[11px] text-muted-foreground mt-2">Chunk {c.chunk_index != null ? c.chunk_index + 1 : '-'} / {c.total_chunks || '-'}</div>
-                      <div className="flex flex-wrap items-center gap-2 mt-3">
-                        {(c.rule_ids || []).map((id) => (
-                          <span key={id} className="text-[10px] font-black uppercase tracking-widest bg-primary/10 text-primary px-2 py-0.5 rounded">
-                            {id}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+            <div className="flex gap-2">
+              <button
+                onClick={() => loadHcpcsRef(false)}
+                className="h-10 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 border-border/40 bg-card text-muted-foreground hover:text-foreground transition-all"
+              >
+                Refresh
+              </button>
+              <button
+                onClick={() => loadHcpcsRef(true)}
+                className="h-10 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 border-primary/40 bg-primary/5 text-primary hover:bg-primary/10 transition-all"
+              >
+                Rebuild Index
+              </button>
+            </div>
           </div>
+
+          {hcpcsLoading ? (
+            <div className="flex items-center justify-center py-24">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : (() => {
+            const entries = Object.entries(hcpcsRef).filter(([key]) => {
+              const q = hcpcsSearch.toLowerCase();
+              if (!q) return true;
+              return key.toLowerCase().includes(q) || JSON.stringify(hcpcsRef[key]).toLowerCase().includes(q);
+            });
+
+            const grouped = {
+              CODE_SPECIFIC: entries.filter(([k]) => !k.startsWith('CATEGORY:') && !k.startsWith('BODY_PART:') && k !== 'CONDITION'),
+              CATEGORY:      entries.filter(([k]) => k.startsWith('CATEGORY:')),
+              BODY_PART:     entries.filter(([k]) => k.startsWith('BODY_PART:')),
+              CONDITION:     entries.filter(([k]) => k === 'CONDITION'),
+            };
+
+            const sectionColors = {
+              CODE_SPECIFIC: { label: 'text-primary bg-primary/5 border-primary/20', card: 'border-primary/20' },
+              CATEGORY:      { label: 'text-amber-700 bg-amber-500/5 border-amber-500/20', card: 'border-amber-500/20' },
+              BODY_PART:     { label: 'text-blue-700 bg-blue-500/5 border-blue-500/20', card: 'border-blue-500/20' },
+              CONDITION:     { label: 'text-emerald-700 bg-emerald-500/5 border-emerald-500/20', card: 'border-emerald-500/20' },
+            };
+
+            const ruleListKeys = ['code_specific_rules', 'category_rules', 'body_part_rules', 'condition_rules'];
+
+            if (entries.length === 0) {
+              return <div className="text-sm text-muted-foreground text-center py-12">No HCPCS entries found. Try rebuilding the index.</div>;
+            }
+
+            return Object.entries(grouped).map(([sectionName, sectionEntries]) => {
+              if (sectionEntries.length === 0) return null;
+              return (
+                <div key={sectionName} className="space-y-3">
+                  <div className="flex items-center gap-2 px-1">
+                    <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border ${sectionColors[sectionName].label}`}>
+                      {sectionName.replace('_', ' ')}
+                    </span>
+                    <span className="text-[10px] font-black text-muted-foreground/40">{sectionEntries.length} entries</span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                    {sectionEntries.map(([key, val]) => {
+                      const valueObj = (val && typeof val === 'object') ? val : {};
+                      const allRuleIds = ruleListKeys.flatMap(k => valueObj[k] || []);
+                      return (
+                        <Card key={key} className={`overflow-hidden border-2 rounded-[1.5rem] ${sectionColors[sectionName].card}`}>
+                          <CardContent className="p-4">
+                            <div className="flex items-center justify-between mb-3">
+                              <span className="text-xs font-black font-mono text-foreground">{key}</span>
+                              <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/40 bg-muted/20 px-2 py-0.5 rounded">
+                                {allRuleIds.length} rule{allRuleIds.length !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+                            <div className="space-y-2">
+                              {ruleListKeys.map(listKey => {
+                                const ids = valueObj[listKey];
+                                if (!ids || ids.length === 0) return null;
+                                return (
+                                  <div key={listKey}>
+                                    <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground/40 mb-1">
+                                      {listKey.replace(/_/g, ' ')}
+                                    </p>
+                                    <div className="flex flex-wrap gap-1">
+                                      {ids.map(id => {
+  const matchedRule = rules.find(r => r.rule_id === id);
+  return (
+    <span
+      key={id}
+      onClick={() => matchedRule && openDetail(matchedRule)}
+      className={`text-[9px] font-black bg-primary/10 text-primary px-2 py-0.5 rounded font-mono transition-all ${
+        matchedRule
+          ? 'cursor-pointer hover:bg-primary/20 hover:scale-105 underline underline-offset-2'
+          : 'opacity-50 cursor-default'
+      }`}
+      title={matchedRule ? `View rule: ${matchedRule.rule_name}` : `Rule ${id} not in current view — switch to All Versions`}
+    >
+      {id}
+    </span>
+  );
+})}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                              {valueObj.usage_time && (
+                                <p className="text-[9px] font-mono text-muted-foreground/50 mt-1">
+                                  usage_time: {valueObj.usage_time}
+                                </p>
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            });
+          })()}
         </div>
       )}
 
@@ -1236,31 +1435,31 @@ const SuperAdminRules = () => {
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1.5">
                         <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 ml-1">Blocking Severity</label>
-                        <select 
-                          value={editForm.blocking_severity || ''} 
-                          onChange={(e) => setEditForm(prev => ({ ...prev, blocking_severity: e.target.value }))}
-                          className="w-full h-10 px-3 rounded-xl border-2 border-border/40 bg-card text-xs font-black focus:border-primary/40 focus:outline-none transition-all"
-                        >
-                          <option value="">Select Severity</option>
-                          <option value="HARD_BLOCK">HARD BLOCK</option>
-                          <option value="SOFT_BLOCK">SOFT BLOCK</option>
-                          <option value="ADVISORY">ADVISORY</option>
-                        </select>
+                        <Select value={editForm.blocking_severity || ''} onValueChange={(value) => setEditForm(prev => ({ ...prev, blocking_severity: value }))}>
+                          <SelectTrigger className="w-full h-10 px-3 rounded-xl border-2 border-border/40 bg-card text-xs font-black focus:border-primary/40 focus:outline-none transition-all">
+                            <SelectValue placeholder="Select Severity" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="HARD_BLOCK">HARD BLOCK</SelectItem>
+                            <SelectItem value="SOFT_BLOCK">SOFT BLOCK</SelectItem>
+                            <SelectItem value="ADVISORY">ADVISORY</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                       <div className="space-y-1.5">
                         <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 ml-1">Verifiable From</label>
-                        <select 
-                          value={editForm.verifiable_from || ''} 
-                          onChange={(e) => setEditForm(prev => ({ ...prev, verifiable_from: e.target.value }))}
-                          className="w-full h-10 px-3 rounded-xl border-2 border-border/40 bg-card text-xs font-black focus:border-primary/40 focus:outline-none transition-all"
-                        >
-                          <option value="">Select Source</option>
-                          <option value="PATIENT_RECORD">PATIENT RECORD</option>
-                          <option value="PRESCRIPTION">PRESCRIPTION</option>
-                          <option value="PAYER_PORTAL">PAYER PORTAL</option>
-                          <option value="SYSTEM">SYSTEM</option>
-                          <option value="MANUAL_REVIEW">MANUAL REVIEW</option>
-                        </select>
+                        <Select value={editForm.verifiable_from || ''} onValueChange={(value) => setEditForm(prev => ({ ...prev, verifiable_from: value }))}>
+                          <SelectTrigger className="w-full h-10 px-3 rounded-xl border-2 border-border/40 bg-card text-xs font-black focus:border-primary/40 focus:outline-none transition-all">
+                            <SelectValue placeholder="Select Source" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="PATIENT_RECORD">PATIENT RECORD</SelectItem>
+                            <SelectItem value="PRESCRIPTION">PRESCRIPTION</SelectItem>
+                            <SelectItem value="PAYER_PORTAL">PAYER PORTAL</SelectItem>
+                            <SelectItem value="SYSTEM">SYSTEM</SelectItem>
+                            <SelectItem value="MANUAL_REVIEW">MANUAL REVIEW</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
                     <div className="space-y-1.5">
@@ -1452,6 +1651,7 @@ const SuperAdminRules = () => {
                 </div>
               </div>
             ) : (
+              <>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
                 {/* View Mode: Left Column: Scope & Logic */}
                 <div className="space-y-8">
@@ -1692,6 +1892,57 @@ const SuperAdminRules = () => {
                   </section>
                 </div>
               </div>
+              {(detailRule?.version > 1 || detailRule?.merge_audit || detailRule?.superseded_by) && (
+
+                <section className="mt-8 space-y-3">
+                  <h3 className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/40">Version & Audit</h3>
+                  <div className="bg-muted/10 border border-border/20 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground/40">Version</p>
+                      <span className="text-[10px] font-black bg-primary/10 text-primary px-2 py-0.5 rounded">
+                        v{detailRule?.version || 1}
+                      </span>
+                    </div>
+                    {detailRule?.merge_audit && (
+                      <>
+                        <div className="flex items-center justify-between gap-4">
+                          <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground/40">Merge Path</p>
+                          <p className="text-[10px] font-bold">{detailRule.merge_audit.merge_path || '-'}</p>
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                          <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground/40">Merged At</p>
+                          <p className="text-[10px] font-bold">
+                            {detailRule.merge_audit.merged_at ? new Date(detailRule.merge_audit.merged_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
+                          </p>
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                          <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground/40">Absorption</p>
+                          <p className="text-[10px] font-bold">{detailRule.merge_audit.merged_rules?.length || 0} rule(s) absorbed</p>
+                        </div>
+                      </>
+                    )}
+                    {detailRule?.merged_from?.length > 0 && (
+                      <div className="flex items-start justify-between gap-4">
+                        <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground/40 mt-0.5">Absorbed Rules</p>
+                        <div className="flex flex-wrap justify-end gap-1.5">
+                          {detailRule.merged_from.map((ruleId, idx) => (
+                            <span key={`${ruleId}-${idx}`} className="font-mono bg-primary/10 text-primary px-1.5 py-0.5 rounded text-[9px]">
+                              {ruleId}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {detailRule?.superseded_by && (
+                      <div className="flex items-center justify-between gap-4">
+                        <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground/40">Superseded by</p>
+                        <p className="text-[10px] font-mono text-muted-foreground/70">{detailRule.superseded_by}</p>
+                      </div>
+                    )}
+                  </div>
+                </section>
+              )}
+              </>
             )}
           </div>
 
@@ -1708,6 +1959,77 @@ const SuperAdminRules = () => {
             <DialogClose asChild>
               <Button className="h-12 px-8 rounded-xl font-black shadow-xl shadow-primary/20 bg-primary hover:bg-primary/95 transition-all uppercase tracking-widest text-[10px]">
                 {isEditing ? 'Cancel Edit' : 'Close Details'}
+              </Button>
+            </DialogClose>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+        <DialogContent className="max-w-2xl rounded-[2rem] p-0 overflow-hidden">
+          <DialogHeader className="px-8 pt-8 pb-0">
+            <DialogTitle className="text-xl font-black tracking-tight">Version History</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground font-mono mt-1">
+              {historyRuleName}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="px-8 py-6 max-h-[60vh] overflow-y-auto scrollbar-none space-y-3">
+            {historyLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : historyVersions.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-12">No history found.</p>
+            ) : (
+              // Render versions newest first (they arrive oldest first from API, so reverse)
+              [...historyVersions].reverse().map((v, idx) => (
+                <div 
+                  key={v.rule_id || idx} 
+                  className={`p-4 rounded-2xl border-2 ${ 
+                    v.status === 'deprecated' 
+                      ? 'border-border/20 bg-muted/10 opacity-70' 
+                      : 'border-primary/20 bg-primary/5' 
+                  }`} 
+                > 
+                  <div className="flex items-center justify-between mb-2"> 
+                    <div className="flex items-center gap-2"> 
+                      <span className="text-[10px] font-black bg-primary/10 text-primary px-2 py-0.5 rounded"> 
+                        v{v.version || 1} 
+                      </span> 
+                      <StatusBadge status={v.status} /> 
+                      {idx === 0 && ( 
+                        <span className="text-[9px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full"> 
+                          Latest 
+                        </span> 
+                      )} 
+                    </div> 
+                    <span className="text-[10px] text-muted-foreground font-mono"> 
+                      {v.updated_at ? new Date(v.updated_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'} 
+                    </span> 
+                  </div> 
+                  <p className="text-xs font-medium text-foreground/80 leading-relaxed mb-2"> 
+                    {v.description || '—'} 
+                  </p> 
+                  {v.merge_audit && ( 
+                    <div className="text-[9px] font-mono text-muted-foreground/60 mt-1"> 
+                      Merged via {v.merge_audit.merge_path} · {v.merge_audit.merged_rules?.length || 0} rule(s) absorbed 
+                    </div> 
+                  )} 
+                  {v.status === 'deprecated' && v.superseded_by && ( 
+                    <div className="text-[9px] font-mono text-muted-foreground/40 mt-1"> 
+                      Superseded by {v.superseded_by} 
+                    </div> 
+                  )} 
+                </div> 
+              ))
+            )}
+          </div>
+
+          <div className="px-8 py-6 border-t border-border/10 bg-muted/5">
+            <DialogClose asChild>
+              <Button variant="ghost" className="h-11 px-8 rounded-2xl font-black uppercase tracking-widest text-xs">
+                Close
               </Button>
             </DialogClose>
           </div>
@@ -1750,6 +2072,14 @@ const SuperAdminRules = () => {
                 className="w-full h-12 rounded-xl border-2 border-border/40 bg-muted/5 p-3 text-xs font-medium leading-relaxed resize-none focus:border-primary/40 focus:outline-none transition-all shadow-inner"
               />
             </div>
+            {mergeDraft.rules?.some(r => r.parameters?._parameter_conflict) && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-start gap-3">
+                <Info className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                <p className="text-xs font-medium text-amber-700/90">
+                  One or more rules have a parameter conflict — structural values like quantity period or time window differ between the rules being merged. Review the parameters carefully before proceeding. The merged rule will use rule A&apos;s parameters.
+                </p>
+              </div>
+            )}
             
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
               <Button variant="ghost" onClick={() => setManualMergeOpen(false)} className="h-11 px-8 rounded-2xl font-black text-muted-foreground hover:bg-muted/50 transition-all uppercase tracking-widest text-[10px]">
@@ -1919,7 +2249,8 @@ const SuperAdminRules = () => {
                 </Button>
                 <div className="flex gap-4">
                   <Button 
-                    disabled={!analysisResult}
+                    disabled={!analysisResult || analysisResult?.merged_rule_draft?.parameters?.LLM_REASONING?._needs_synthesis === true}
+                    title={analysisResult?.merged_rule_draft?.parameters?.LLM_REASONING?._needs_synthesis ? "Parameters need synthesis — use Merge & Approve which applies the full AI draft, or re-run analysis" : undefined}
                     onClick={() => {
                       setAnalysisOpen(false);
                       setMergeDraft(prev => ({ 

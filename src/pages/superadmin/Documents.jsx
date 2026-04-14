@@ -7,6 +7,16 @@ import {
   ArrowUpRight, Upload, Trash2, AlertCircle, X, Loader2, MessageSquare, Save, Edit2, Eye, Download, ChevronDown
 } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from '../../components/ui/dialog';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../../components/ui/select';
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 const BASE_URL = 'https://kenqo-api-409744260053.asia-south1.run.app'; // ← replace with your API base URL
@@ -357,16 +367,17 @@ const UploadModal = ({ superAdminId, onClose, onUploaded }) => {
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Document Type <span className="text-red-500">*</span></label>
                 <div className="relative">
-                  <select
-                    value={docType}
-                    onChange={(e) => setDocType(e.target.value)}
-                    className="w-full h-12 px-4 bg-card border-2 border-border/40 focus:outline-none focus:ring-0 focus:border-primary/40 rounded-2xl text-sm font-black appearance-none cursor-pointer shadow-sm transition-all"
-                  >
-                    <option value="" disabled>Select document type...</option>
-                    {options.doc_types.map(opt => (
-                      <option key={opt} value={opt}>{opt}</option>
-                    ))}
-                  </select>
+              <Select value={docType} onValueChange={setDocType}>
+                <SelectTrigger className="w-full h-12 px-4 bg-card border-2 border-border/40 focus:outline-none focus:ring-0 focus:border-primary/40 rounded-2xl text-sm font-black appearance-none cursor-pointer shadow-sm transition-all">
+                  <SelectValue placeholder="Select document type..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="" disabled>Select document type...</SelectItem>
+                  {options.doc_types.map(opt => (
+                    <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
                   <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
                 </div>
               </div>
@@ -375,15 +386,16 @@ const UploadModal = ({ superAdminId, onClose, onUploaded }) => {
                 <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Payer Scope <span className="text-red-500">*</span></label>
                   <div className="relative">
-                    <select
-                      value={payerScope}
-                      onChange={(e) => setPayerScope(e.target.value)}
-                      className="w-full h-12 px-4 bg-card border-2 border-border/40 focus:outline-none focus:ring-0 focus:border-primary/40 rounded-2xl text-sm font-black appearance-none cursor-pointer shadow-sm transition-all"
-                    >
+                  <Select value={payerScope} onValueChange={setPayerScope}>
+                    <SelectTrigger className="w-full h-12 px-4 bg-card border-2 border-border/40 focus:outline-none focus:ring-0 focus:border-primary/40 rounded-2xl text-sm font-black appearance-none cursor-pointer shadow-sm transition-all">
+                      <SelectValue placeholder="Select payer scope..." />
+                    </SelectTrigger>
+                    <SelectContent>
                       {options.payer_scopes.map(opt => (
-                        <option key={opt} value={opt}>{opt}</option>
+                        <SelectItem key={opt} value={opt}>{opt}</SelectItem>
                       ))}
-                    </select>
+                    </SelectContent>
+                  </Select>
                     <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/40 pointer-events-none" />
                   </div>
                 </div>
@@ -391,18 +403,19 @@ const UploadModal = ({ superAdminId, onClose, onUploaded }) => {
                 <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Authority Level <span className="text-red-500">*</span></label>
                   <div className="relative">
-                    <select
-                      value={authorityLevel}
-                      onChange={(e) => setAuthorityLevel(e.target.value)}
-                      className="w-full h-12 px-4 bg-card border-2 border-border/40 focus:outline-none focus:ring-0 focus:border-primary/40 rounded-2xl text-sm font-black appearance-none cursor-pointer shadow-sm transition-all"
-                    >
-                      <option value="" disabled>Select authority level...</option>
-                      {options.authority_levels.map(opt => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.value} — {getAuthorityLabel(opt.value)}
-                        </option>
+                  <Select value={authorityLevel} onValueChange={setAuthorityLevel}>
+                    <SelectTrigger className="w-full h-12 px-4 bg-card border-2 border-border/40 focus:outline-none focus:ring-0 focus:border-primary/40 rounded-2xl text-sm font-black appearance-none cursor-pointer shadow-sm transition-all">
+                      <SelectValue placeholder="Select authority level..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="" disabled>Select authority level...</SelectItem>
+                      {options.authority_levels.map(optValue => (
+                        <SelectItem key={optValue} value={String(optValue)}>
+                          {optValue} — {getAuthorityLabel(optValue)}
+                        </SelectItem>
                       ))}
-                    </select>
+                    </SelectContent>
+                  </Select>
                     <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/40 pointer-events-none" />
                   </div>
                 </div>
