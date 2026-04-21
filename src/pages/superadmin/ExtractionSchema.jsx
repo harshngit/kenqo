@@ -583,7 +583,11 @@ const SuperAdminExtractionSchema = () => {
   };
 
   const extractionSchema = schema?.extraction_schema || {};
-  const allFields = Object.values(extractionSchema).flatMap(Object.values);
+  const allFields = Object.entries(extractionSchema).flatMap(([, section]) =>
+    Object.entries(section)
+      .filter(([k, v]) => k !== '_meta' && typeof v === 'object' && v !== null && v.active !== false)
+      .map(([, v]) => v)
+  );
   const redCount = allFields.filter((f) => f.criticality === 'RED').length;
   const yellowCount = allFields.filter((f) => f.criticality === 'YELLOW').length;
   const greenCount = allFields.filter((f) => f.criticality === 'GREEN').length;

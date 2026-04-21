@@ -8,22 +8,15 @@ import {
   LayoutDashboard,
   Users,
   FileText,
-  BookOpen,
   LogOut,
-  Shield,
   Sun,
   Moon,
-  ChevronRight,
   Menu,
   X,
   ChevronLeft,
-  Database,
-  Settings,
-  Layers,
-  GitBranch,
-  Map,
-  MessageSquare,
-  Activity,
+  FilePlus,
+  ClipboardList,
+  User,
 } from 'lucide-react';
 
 const AdminLayout = () => {
@@ -52,28 +45,23 @@ const AdminLayout = () => {
       ],
     },
     {
-      label: 'KNOWLEDGE BASE',
+      label: 'INTAKE',
       items: [
-        { path: '/admin/knowledge-base', label: 'Rules', icon: GitBranch, badge: 14 },
-        { path: '/admin/documents', label: 'Documents', icon: FileText, badge: 5 },
-        { path: '/admin/chunks', label: 'Chunks', icon: Layers },
+        { path: '/admin/intake/new',      label: 'New Order',  icon: FilePlus },
+        { path: '/admin/intake',          label: 'Orders',     icon: ClipboardList },
+        { path: '/admin/intake/patients', label: 'Patients',   icon: Users },
       ],
     },
     {
-      label: 'CONFIGURATION',
+      label: 'DOCUMENTS',
       items: [
-        { path: '/admin/extraction-schema', label: 'Extraction Schema', icon: Database },
-        { path: '/admin/agents', label: 'Agents', icon: Activity },
-        { path: '/admin/classifier', label: 'Classifier', icon: Settings },
-        { path: '/admin/mapping', label: 'Mapping', icon: Map },
-        { path: '/admin/prompts', label: 'Prompts', icon: MessageSquare },
+        { path: '/admin/documents', label: 'Documents', icon: FileText },
       ],
     },
     {
-      label: 'PLATFORM',
+      label: 'ACCOUNT',
       items: [
-        { path: '/admin/users', label: 'Users', icon: Users },
-        { path: '/admin/diseases', label: 'Diseases', icon: BookOpen },
+        { path: '/admin/profile', label: 'Profile', icon: User },
       ],
     },
   ];
@@ -100,7 +88,7 @@ const AdminLayout = () => {
         <div className={`h-16 flex items-center ${isSidebarCollapsed ? 'justify-center px-0' : 'px-4'} border-b border-sidebar-border/50 flex-shrink-0 relative`}>
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary/20 shrink-0">
-              <Shield className="w-5 h-5 text-primary-foreground" />
+              <LayoutDashboard className="w-5 h-5 text-primary-foreground" />
             </div>
             {!isSidebarCollapsed && (
               <div className="animate-in fade-in slide-in-from-left-2 duration-300">
@@ -113,9 +101,9 @@ const AdminLayout = () => {
           {/* Desktop Collapse Toggle */}
           <button
             onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-            className="hidden lg:flex absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-sidebar-border border border-sidebar-border rounded-full items-center justify-center hover:bg-primary hover:text-white transition-all z-50 shadow-md"
+            className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-sidebar-border text-sidebar-foreground rounded-full hidden lg:flex items-center justify-center hover:bg-primary hover:text-white transition-all shadow-lg z-[80]"
           >
-            {isSidebarCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
+            {isSidebarCollapsed ? <Menu className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
           </button>
 
           <button
@@ -213,7 +201,7 @@ const AdminLayout = () => {
         <header className="h-14 bg-background/95 backdrop-blur sticky top-0 z-40 px-4 flex items-center justify-between lg:hidden border-b border-border/50">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 bg-primary rounded-lg flex items-center justify-center">
-              <Shield className="w-4 h-4 text-primary-foreground" />
+              <LayoutDashboard className="w-4 h-4 text-primary-foreground" />
             </div>
             <span className="font-bold tracking-tight text-sm">Kenqo</span>
           </div>
@@ -226,7 +214,7 @@ const AdminLayout = () => {
         </header>
 
         {/* Content Area */}
-        <div className="p-4 sm:p-6 lg:p-10 max-w-screen-2xl mx-auto w-full transition-all duration-500">
+        <div className="p-4 sm:p-6 lg:p-8 w-full transition-all duration-500">
           <Outlet />
         </div>
       </main>

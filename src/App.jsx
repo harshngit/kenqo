@@ -33,16 +33,12 @@ import SuperAdminDiseases from './pages/superadmin/Diseases';
 import SuperAdminRules from './pages/superadmin/Rules';
 
 import AdminDashboard from './pages/admin/Dashboard';
-import AdminUsers from './pages/admin/Users';
 import AdminDocuments from './pages/admin/Documents';
-import KnowledgeBase from './pages/admin/KnowledgeBase';
-import Chunks from './pages/admin/Chunks';
-import ExtractionSchema from './pages/admin/ExtractionSchema';
-import Agents from './pages/admin/Agents';
-import Classifier from './pages/admin/Classifier';
-import Mapping from './pages/admin/Mapping';
-import Prompts from './pages/admin/Prompts';
-import Diseases from './pages/admin/Diseases';
+import IntakeOrders from './pages/admin/intake/IntakeOrders';
+import NewOrder from './pages/admin/intake/NewOrder';
+import OrderDetail from './pages/admin/intake/OrderDetail';
+import IntakePatients from './pages/admin/intake/IntakePatients';
+import AdminProfile from './pages/admin/Profile';
 
 // Protected Route Component
 const ProtectedRoute = ({ children, allowedRoles }) => {
@@ -133,16 +129,12 @@ function App() {
             {/* Admin Routes */}
             <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminLayout /></ProtectedRoute>}>
               <Route index element={<AdminDashboard />} />
-              <Route path="users" element={<AdminUsers />} />
               <Route path="documents" element={<AdminDocuments />} />
-              <Route path="knowledge-base" element={<KnowledgeBase />} />
-              <Route path="chunks" element={<Chunks />} />
-              <Route path="extraction-schema" element={<ExtractionSchema />} />
-              <Route path="agents" element={<Agents />} />
-              <Route path="classifier" element={<Classifier />} />
-              <Route path="mapping" element={<Mapping />} />
-              <Route path="prompts" element={<Prompts />} />
-              <Route path="diseases" element={<Diseases />} />
+              <Route path="intake" element={<IntakeOrders />} />
+              <Route path="intake/new" element={<NewOrder />} />
+              <Route path="intake/orders/:orderId" element={<OrderDetail />} />
+              <Route path="intake/patients" element={<IntakePatients />} />
+              <Route path="profile" element={<AdminProfile />} />
             </Route>
 
             <Route path="/" element={<Navigate to="/login" replace />} />

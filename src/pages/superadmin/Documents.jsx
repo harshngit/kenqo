@@ -372,8 +372,7 @@ const UploadModal = ({ superAdminId, onClose, onUploaded }) => {
                   <SelectValue placeholder="Select document type..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="" disabled>Select document type...</SelectItem>
-                  {options.doc_types.map(opt => (
+                  {options.doc_types.filter((opt) => String(opt || '').trim()).map(opt => (
                     <SelectItem key={opt} value={opt}>{opt}</SelectItem>
                   ))}
                 </SelectContent>
@@ -391,7 +390,7 @@ const UploadModal = ({ superAdminId, onClose, onUploaded }) => {
                       <SelectValue placeholder="Select payer scope..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {options.payer_scopes.map(opt => (
+                      {options.payer_scopes.filter((opt) => String(opt || '').trim()).map(opt => (
                         <SelectItem key={opt} value={opt}>{opt}</SelectItem>
                       ))}
                     </SelectContent>
@@ -408,8 +407,7 @@ const UploadModal = ({ superAdminId, onClose, onUploaded }) => {
                       <SelectValue placeholder="Select authority level..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="" disabled>Select authority level...</SelectItem>
-                      {options.authority_levels.map(optValue => (
+                      {options.authority_levels.filter((optValue) => String(optValue || '').trim()).map(optValue => (
                         <SelectItem key={optValue} value={String(optValue)}>
                           {optValue} — {getAuthorityLabel(optValue)}
                         </SelectItem>

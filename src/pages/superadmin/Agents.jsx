@@ -111,6 +111,7 @@ const ConfigureModal = ({ agentId, disease, userId, token, onClose, onSaved }) =
   const handleSave = async () => {
     setSaving(true); setSaveError(null); setSaved(false);
     try {
+      const { output_schema, ...editableUpdates } = edits;
       const res = await fetch(`${BASE_URL}/admin/config/${disease}/agents/${agentId}`, {
         method: 'PUT',
         headers: {
@@ -118,11 +119,11 @@ const ConfigureModal = ({ agentId, disease, userId, token, onClose, onSaved }) =
           'x-user-id': userId,
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ user_id: userId, updates: edits }),
+        body: JSON.stringify({ user_id: userId, updates: editableUpdates }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setSaved(true);
-      onSaved?.(agentId, edits);
+      onSaved?.(agentId, editableUpdates);
       setTimeout(() => setSaved(false), 3000);
     } catch (e) {
       setSaveError(e.message);
@@ -192,7 +193,9 @@ const ConfigureModal = ({ agentId, disease, userId, token, onClose, onSaved }) =
               )}
 
               <div className="space-y-3">
-                {PROMPT_FIELDS.map(({ key, label, Icon, accent, bg }) => (
+                {PROMPT_FIELDS.map(({ key, label, Icon, accent, bg }) => {
+                  const isOutputSchema = key === 'output_schema';
+                  return (
                   <div key={key} className="border border-border/40 rounded-2xl overflow-hidden bg-card transition-all">
                     <button
                       className="w-full flex items-center justify-between px-5 py-4 bg-muted/20 hover:bg-muted/40 transition-colors text-left"
@@ -203,9 +206,9 @@ const ConfigureModal = ({ agentId, disease, userId, token, onClose, onSaved }) =
                           <Icon className={`w-4 h-4 ${accent}`} />
                         </div>
                         <span className="text-sm font-black">{label}</span>
-                        {edits[key] && (
-                          <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-primary/10 text-primary">
-                            edited
+                        {isOutputSchema && (
+                          <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                            view only
                           </span>
                         )}
                       </div>
@@ -217,15 +220,21 @@ const ConfigureModal = ({ agentId, disease, userId, token, onClose, onSaved }) =
                       <div className="p-4 bg-background animate-in slide-in-from-top-2 duration-300">
                         <textarea
                           rows={6}
-                          className="w-full text-xs font-mono bg-muted/10 border border-border/40 rounded-xl p-4 text-foreground resize-none focus:outline-none focus:ring-4 focus:ring-primary/5 focus:border-primary/40 placeholder:text-muted-foreground/30 transition-all leading-relaxed"
+                          readOnly={isOutputSchema}
+                          className={`w-full text-xs font-mono border border-border/40 rounded-xl p-4 text-foreground resize-none focus:outline-none placeholder:text-muted-foreground/30 transition-all leading-relaxed ${
+                            isOutputSchema
+                              ? 'bg-muted/20 cursor-default'
+                              : 'bg-muted/10 focus:ring-4 focus:ring-primary/5 focus:border-primary/40'
+                          }`}
                           value={edits[key] ?? ''}
-                          onChange={e => setEdits(p => ({ ...p, [key]: e.target.value }))}
+                          onChange={isOutputSchema ? undefined : e => setEdits(p => ({ ...p, [key]: e.target.value }))}
                           placeholder={`Enter ${label.toLowerCase()}…`}
                         />
                       </div>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </>
           )}
