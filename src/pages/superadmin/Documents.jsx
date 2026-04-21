@@ -4,18 +4,9 @@ import { Input } from '../../components/ui/input';
 import { Button } from '../../components/ui/button';
 import {
   FileText, Search, CheckCircle2, Clock, Users,
-  ArrowUpRight, Upload, Trash2, AlertCircle, X, Loader2, MessageSquare, Save, Edit2, Eye, Download, ChevronDown
+  ArrowUpRight, Upload, Trash2, AlertCircle, X, Loader2, MessageSquare, Save, Eye, Download, ChevronDown
 } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-  DialogClose,
-} from '../../components/ui/dialog';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../../components/ui/select';
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
@@ -47,6 +38,35 @@ const getAuthorityLabel = (value) => {
     5: 'Very Low'
   };
   return labels[v] || 'Very Low';
+};
+
+const normalizeOptionList = (value) => {
+  const rawItems = Array.isArray(value)
+    ? value
+    : value && typeof value === 'object'
+      ? Object.entries(value).map(([key, item]) => (
+          item && typeof item === 'object'
+            ? { value: item.value ?? item.id ?? item.key ?? key, label: item.label ?? item.name ?? item.title ?? item.value ?? key }
+            : { value: key, label: item }
+        ))
+      : value
+        ? [value]
+        : [];
+
+  const seen = new Set();
+  return rawItems.reduce((acc, item) => {
+    const rawValue = item && typeof item === 'object'
+      ? item.value ?? item.id ?? item.key ?? item.name ?? item.label
+      : item;
+    const rawLabel = item && typeof item === 'object'
+      ? item.label ?? item.name ?? item.title ?? rawValue
+      : item;
+    const optionValue = String(rawValue ?? '').trim();
+    if (!optionValue || seen.has(optionValue)) return acc;
+    seen.add(optionValue);
+    acc.push({ value: optionValue, label: String(rawLabel ?? optionValue).trim() || optionValue });
+    return acc;
+  }, []);
 };
 
 // Maps API status → UI badge
@@ -196,9 +216,9 @@ const UploadModal = ({ superAdminId, onClose, onUploaded }) => {
       const data = await response.json();
       if (response.ok && data.success) {
         setOptions({
-          doc_types: data.doc_types || [],
-          payer_scopes: data.payer_scopes || [],
-          authority_levels: data.authority_levels || [],
+          doc_types: normalizeOptionList(data.doc_types),
+          payer_scopes: normalizeOptionList(data.payer_scopes),
+          authority_levels: normalizeOptionList(data.authority_levels),
         });
       }
     } catch (err) {
@@ -371,9 +391,9 @@ const UploadModal = ({ superAdminId, onClose, onUploaded }) => {
                 <SelectTrigger className="w-full h-12 px-4 bg-card border-2 border-border/40 focus:outline-none focus:ring-0 focus:border-primary/40 rounded-2xl text-sm font-black appearance-none cursor-pointer shadow-sm transition-all">
                   <SelectValue placeholder="Select document type..." />
                 </SelectTrigger>
-                <SelectContent>
-                  {options.doc_types.filter((opt) => String(opt || '').trim()).map(opt => (
-                    <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                <SelectContent className="z-[1200]">
+                  {options.doc_types.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -389,9 +409,9 @@ const UploadModal = ({ superAdminId, onClose, onUploaded }) => {
                     <SelectTrigger className="w-full h-12 px-4 bg-card border-2 border-border/40 focus:outline-none focus:ring-0 focus:border-primary/40 rounded-2xl text-sm font-black appearance-none cursor-pointer shadow-sm transition-all">
                       <SelectValue placeholder="Select payer scope..." />
                     </SelectTrigger>
-                    <SelectContent>
-                      {options.payer_scopes.filter((opt) => String(opt || '').trim()).map(opt => (
-                        <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                    <SelectContent className="z-[1200]">
+                      {options.payer_scopes.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -406,10 +426,10 @@ const UploadModal = ({ superAdminId, onClose, onUploaded }) => {
                     <SelectTrigger className="w-full h-12 px-4 bg-card border-2 border-border/40 focus:outline-none focus:ring-0 focus:border-primary/40 rounded-2xl text-sm font-black appearance-none cursor-pointer shadow-sm transition-all">
                       <SelectValue placeholder="Select authority level..." />
                     </SelectTrigger>
-                    <SelectContent>
-                      {options.authority_levels.filter((optValue) => String(optValue || '').trim()).map(optValue => (
-                        <SelectItem key={optValue} value={String(optValue)}>
-                          {optValue} — {getAuthorityLabel(optValue)}
+                    <SelectContent className="z-[1200]">
+                      {options.authority_levels.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label} - {getAuthorityLabel(opt.value)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -596,10 +616,11 @@ const SuperAdminDocuments = () => {
   }, [superAdminId]);
 
   useEffect(() => {
+    const activePollingMap = pollingMap.current;
     fetchDocuments();
     return () => {
       // Clean up all polling intervals on unmount
-      Object.values(pollingMap.current).forEach(clearInterval);
+      Object.values(activePollingMap).forEach(clearInterval);
     };
   }, [fetchDocuments]);
 
@@ -653,7 +674,7 @@ const SuperAdminDocuments = () => {
     }, 4000); // poll every 4 s
 
     pollingMap.current[documentId] = interval;
-  }, [superAdminId]);
+  }, [superAdminId, triggerPostIngestionBuilds]);
 
   // Auto-start polling for any in-progress docs after list fetch
   useEffect(() => {
@@ -970,3 +991,4 @@ const SuperAdminDocuments = () => {
 };
 
 export default SuperAdminDocuments;
+
