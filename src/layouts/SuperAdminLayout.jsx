@@ -24,6 +24,8 @@ import {
   Map,
   MessageSquare,
   Activity,
+  FilePlus,
+  ClipboardList,
 } from 'lucide-react';
 
 const SuperAdminLayout = () => {
@@ -58,7 +60,7 @@ const SuperAdminLayout = () => {
         setCounts({
           rules: rulesData.rule?.length || rulesData.rules?.length || 0,
           documents: docsData.documents?.length || 0,
-          chunks: chunksData.chunks?.length || 0,
+          chunks: (Array.isArray(chunksData) ? chunksData : chunksData.chunks || chunksData.items || []).length,
         });
       } catch (err) {
         console.error('Failed to fetch sidebar counts', err);
@@ -72,7 +74,7 @@ const SuperAdminLayout = () => {
   }, [userId, location.pathname]);
 
   useEffect(() => {
-    setIsMobileMenuOpen(false);
+    queueMicrotask(() => setIsMobileMenuOpen(false));
   }, [location.pathname]);
 
   const handleLogout = () => {
@@ -102,7 +104,6 @@ const SuperAdminLayout = () => {
         { path: '/superadmin/agents', label: 'Agents', icon: Activity },
         { path: '/superadmin/classifier', label: 'Classifier', icon: Settings },
         { path: '/superadmin/mapping', label: 'Mapping', icon: Map },
-        { path: '/superadmin/prompts', label: 'Prompts', icon: MessageSquare },
       ],
     },
     {
@@ -112,10 +113,23 @@ const SuperAdminLayout = () => {
         { path: '/superadmin/diseases', label: 'Diseases', icon: BookOpen },
       ],
     },
+    {
+      label: 'INTAKE PANEL',
+      items: [
+        { path: '/admin/intake', label: 'Orders', icon: ClipboardList },
+        { path: '/admin/intake/new', label: 'New Order', icon: FilePlus },
+        { path: '/admin/intake/patients', label: 'Patients', icon: Users },
+      ],
+    },
   ];
 
   const isActive = (path) =>
     location.pathname === path || location.pathname.startsWith(`${path}/`);
+
+  const isSuperadmin = user?.role === 'superadmin';
+  const superadminModeLabel = location.pathname.startsWith('/admin/intake')
+    ? 'Superadmin (Intake Mode)'
+    : 'Superadmin (Admin Mode)';
 
   return (
     <div className="min-h-screen bg-background flex transition-colors duration-300 font-sans">
@@ -263,6 +277,13 @@ const SuperAdminLayout = () => {
 
         {/* Content Area */}
         <div className="p-4 sm:p-6 lg:p-10 max-w-screen-2xl mx-auto w-full transition-all duration-500">
+          {isSuperadmin && (
+            <div className="mb-4">
+              <span className="inline-flex items-center rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-primary">
+                {superadminModeLabel}
+              </span>
+            </div>
+          )}
           <Outlet />
         </div>
       </main>

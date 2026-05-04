@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from 'react-router-dom';
+﻿import { useParams, useNavigate } from 'react-router-dom';
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
 import {
@@ -11,6 +11,7 @@ import {
   File,
   Trash2,
   Edit2,
+  RotateCcw,
   Loader2,
   ShieldAlert,
   Users,
@@ -20,6 +21,12 @@ import {
   MessageSquare,
   ExternalLink,
   Upload,
+  User,
+  BriefcaseMedical,
+  ShieldCheck,
+  Pill,
+  NotebookPen,
+  Package,
 } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
@@ -28,11 +35,22 @@ import { Input } from '../../../components/ui/input';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
   DialogClose,
 } from '../../../components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../../../components/ui/alert-dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../../components/ui/tabs';
 import {
   Select,
@@ -46,12 +64,15 @@ import {
   getOrderStatus,
   getOrderFields,
   getOrderDocuments,
+  listOrders,
   addOrderDocuments,
   approveOrder,
   deleteOrder,
   submitCSRDecision,
   editField,
   resolveConflict,
+  replaceDocument,
+  undoAction,
   deleteDocument,
   listPatients,
   getPatientOrders,
@@ -59,16 +80,33 @@ import {
   viewDocument,
 } from '../../../services/intakeApi';
 
-// ─── REUSABLE COMPONENTS ──────────────────────────────────────────────────────
+// â”€â”€â”€ REUSABLE COMPONENTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-const OrderStatusBadge = ({ status }) => {
+const OrderStatusBadge = ({ status, order }) => {
   const s = (status || 'pending').toLowerCase();
+  
+  // Check if extracted order is actually incomplete
+  let displayStatus = s;
+  let displayLabel = null;
+  
+  if (s === 'extracted' && order) {
+    const missingDocs = order.missing_documents || [];
+    const completeness = order.completeness_score;
+    
+    // If missing required documents OR completeness < 90%, show INCOMPLETE
+    if (missingDocs.length > 0 || (completeness != null && completeness < 90)) {
+      displayStatus = 'incomplete';
+      displayLabel = 'Incomplete';
+    }
+  }
+  
   const map = {
     pending: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
     classifying: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
     extracting: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
     reconciling: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
     extracted: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
+    incomplete: 'bg-red-500/10 text-red-600 border-red-500/20',
     awaiting_csr_decision: 'bg-orange-500/10 text-orange-600 border-orange-500/20',
     complete: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
     failed: 'bg-red-500/10 text-red-600 border-red-500/20',
@@ -80,28 +118,34 @@ const OrderStatusBadge = ({ status }) => {
     extracting: 'Processing',
     reconciling: 'Processing',
     extracted: 'Ready for Review',
+    incomplete: 'Incomplete',
     awaiting_csr_decision: 'Action Required',
     complete: 'Complete',
     failed: 'Failed',
   };
+  
+  const finalLabel = displayLabel || labels[displayStatus] || displayStatus.replace(/_/g, ' ');
+  
   return (
-    <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-sm ${map[s] || map.pending}`}>
+    <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-sm ${map[displayStatus] || map.pending}`}>
       {isProcessing ? (
         <Loader2 className="w-3.5 h-3.5 animate-spin" />
-      ) : s === 'complete' ? (
+      ) : displayStatus === 'complete' ? (
         <CheckCircle2 className="w-3.5 h-3.5" />
-      ) : s === 'awaiting_csr_decision' || s === 'extracted' ? (
+      ) : displayStatus === 'awaiting_csr_decision' || displayStatus === 'extracted' ? (
         <AlertCircle className="w-3.5 h-3.5" />
+      ) : displayStatus === 'incomplete' ? (
+        <X className="w-3.5 h-3.5" />
       ) : (
         <X className="w-3.5 h-3.5" />
       )}
-      {labels[s] || s.replace(/_/g, ' ')}
+      {finalLabel}
     </div>
   );
 };
 
 const RYGBadge = ({ verdict }) => {
-  if (!verdict) return <span className="text-muted-foreground/40 font-mono">—</span>;
+  if (!verdict) return <span className="text-muted-foreground/40 font-mono">â€”</span>;
   const map = {
     RED: 'bg-red-500 text-white',
     YELLOW: 'bg-amber-500 text-white',
@@ -123,21 +167,27 @@ const DocumentStatusBadge = ({ status }) => {
     complete: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
     extracted: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
     failed: 'bg-red-500/10 text-red-600 border-red-500/20',
+    corrupt: 'bg-red-500/10 text-red-600 border-red-500/20',
+    replaced: 'bg-muted/40 text-muted-foreground border-border/20',
+  };
+  const labels = {
+    corrupt: 'Corrupted',
+    replaced: 'Replaced',
   };
   return (
     <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-widest border ${map[s] || map.pending}`}>
-      {s.replace(/_/g, ' ')}
+      {labels[s] || s.replace(/_/g, ' ')}
     </span>
   );
 };
 
 const ConfidenceDot = ({ confidence }) => {
   const score = parseFloat(confidence || 0);
-  let color = 'text-red-500';
-  if (score >= 0.85) color = 'text-emerald-500';
-  else if (score >= 0.60) color = 'text-amber-500';
+  let color = 'bg-amber-500';
+  if (score > 0.9) color = 'bg-emerald-500';
+  else if (score < 0.5) color = 'bg-red-500';
   return (
-    <span className={`text-[12px] leading-none ${color}`}>●</span>
+    <span className={`inline-block h-2.5 w-2.5 rounded-full ${color}`} />
   );
 };
 
@@ -153,22 +203,22 @@ const HoverTip = ({ icon, label, content, colorClass = 'text-muted-foreground/30
     <button className={`transition-colors ${colorClass}`} type="button" title={label}>
       {icon}
     </button>
-    <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 bg-popover border border-border/40 rounded-xl px-3 py-2.5 text-[11px] text-muted-foreground leading-relaxed shadow-xl opacity-0 group-hover/tip:opacity-100 transition-opacity z-50 whitespace-normal">
+    <div className="pointer-events-none absolute bottom-full left-0 mb-2 ml-2 w-56 bg-popover border border-border/40 rounded-xl px-3 py-2.5 text-[11px] text-muted-foreground leading-relaxed shadow-xl opacity-0 group-hover/tip:opacity-100 transition-opacity z-50 whitespace-normal">
       <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/50 block mb-1">{label}</span>
       {content}
     </div>
   </div>
 );
 
-// ─── SEMANTIC TAB DEFINITIONS ─────────────────────────────────────────────────
+// â”€â”€â”€ SEMANTIC TAB DEFINITIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const SEMANTIC_TABS = [
-  { id: 'patient',      label: 'Patient',             agents: ['agent_1'] },
-  { id: 'insurance',    label: 'Insurance & Billing',  agents: ['agent_2'] },
-  { id: 'provider',     label: 'Provider',             agents: ['agent_3'] },
-  { id: 'prescription', label: 'Prescription',         agents: ['agent_6', 'agent_7'] },
-  { id: 'clinical',     label: 'Clinical Notes',       agents: ['agent_4'] },
-  { id: 'dme',          label: 'DME Items',            agents: ['agent_5'] },
+  { id: 'patient', label: 'Patient', agents: ['agent_1'], icon: User },
+  { id: 'insurance', label: 'Insurance & Billing', agents: ['agent_2'], icon: ShieldCheck },
+  { id: 'provider', label: 'Provider', agents: ['agent_3'], icon: BriefcaseMedical },
+  { id: 'prescription', label: 'Prescription', agents: ['agent_6', 'agent_7'], icon: Pill },
+  { id: 'clinical', label: 'Clinical Notes', agents: ['agent_4'], icon: NotebookPen },
+  { id: 'dme', label: 'DME Items', agents: ['agent_5'], icon: Package },
 ];
 
 const DOC_TYPES = [
@@ -226,6 +276,15 @@ const isMergeOrNewDecision = (order) => {
     !!existingOrder?.order_id;
 };
 
+const isDerivedReadyForReview = (order) => {
+  if (!order || order.status !== 'extracted') return false;
+
+  const missingDocs = order.missing_documents || [];
+  const completeness = order.completeness_score;
+
+  return missingDocs.length === 0 && (completeness == null || completeness >= 90);
+};
+
 const formatDate = (value, fallback = 'Date pending') => {
   if (!value) return fallback;
   const date = new Date(value);
@@ -254,7 +313,145 @@ const formatFileSize = (bytes) => {
 const getConflictCount = (order) =>
   Number(order?.extraction?.conflict_count || order?.conflict_count || 0);
 
-// ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
+const getOrderSummaryText = (order) =>
+  order?.summary_text ||
+  order?.summary ||
+  order?.extraction?.summary_text ||
+  order?.extraction?.summary ||
+  order?.order_summary ||
+  null;
+
+const getFieldBreakdown = (order) =>
+  order?.field_breakdown ||
+  order?.extraction?.field_breakdown ||
+  order?.breakdown ||
+  null;
+
+const getMissingDocuments = (order) =>
+  order?.missing_documents ||
+  order?.extraction?.missing_documents ||
+  [];
+
+const getDocumentId = (doc) => doc?.doc_id || doc?.id || doc?.document_id;
+
+const getDocumentFilename = (doc) => doc?.filename || doc?.file_name || doc?.name || 'Document';
+
+const getRawExtractions = (field) => field?.raw_extractions || field?.rawExtractions || {};
+
+const getEditHistory = (field) => {
+  const raw = getRawExtractions(field);
+  const history = raw.edit_history || field?.edit_history || [];
+  return Array.isArray(history) ? history : [];
+};
+
+const hasResolutionHistory = (field) =>
+  getEditHistory(field).some((entry) => entry?.resolution_type);
+
+const canUndoField = (field) =>
+  getEditHistory(field).length > 0 ||
+  (field?.status === 'conflict' && (field?.resolved_value !== undefined || getRawExtractions(field)?.resolved_value !== undefined));
+
+const parseSourceAgents = (value) => {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [value];
+    } catch {
+      return [value];
+    }
+  }
+  if (value == null) return [];
+  return [value];
+};
+
+const getNormalizedFieldsMap = (payload) => {
+  if (!payload) return {};
+
+  const directFields =
+    payload?.fields ||
+    payload?.data?.fields ||
+    payload?.extraction_fields ||
+    payload?.data?.extraction_fields;
+
+  if (directFields && !Array.isArray(directFields) && typeof directFields === 'object') {
+    return directFields;
+  }
+
+  const fieldArray = Array.isArray(directFields)
+    ? directFields
+    : Array.isArray(payload?.data)
+      ? payload.data
+      : Array.isArray(payload)
+        ? payload
+        : null;
+
+  if (fieldArray) {
+    return fieldArray.reduce((acc, item, index) => {
+      const key = item?.fieldName || item?.field_name || item?.name || `field_${index}`;
+      acc[key] = {
+        ...item,
+        fieldName: key,
+      };
+      return acc;
+    }, {});
+  }
+
+  const reservedKeys = new Set(['summary', 'data', 'status', 'message', 'order_id']);
+  const plainObjectEntries = Object.entries(payload).filter(([, value], index, entries) => {
+    return !reservedKeys.has(entries[index][0]) && value && typeof value === 'object' && !Array.isArray(value);
+  });
+
+  if (plainObjectEntries.length > 0) {
+    return plainObjectEntries.reduce((acc, [key, value]) => {
+      acc[key] = {
+        ...value,
+        fieldName: value?.fieldName || value?.field_name || value?.name || key,
+      };
+      return acc;
+    }, {});
+  }
+
+  return {};
+};
+
+const getFieldsSummary = (payload, fieldMap) => {
+  if (payload?.summary) return payload.summary;
+  if (payload?.data?.summary) return payload.data.summary;
+
+  const values = Object.values(fieldMap || {});
+  if (!values.length) return { total: 0, green: 0, yellow: 0, red: 0, conflicts: 0 };
+
+  let green = 0;
+  let yellow = 0;
+  let red = 0;
+  let conflicts = 0;
+
+  values.forEach((field) => {
+    const hasValue = !(field?.not_found || field?.value === null || field?.value === undefined || field?.value === '');
+    const isConflict = field?.status === 'conflict' || field?.has_conflict;
+    const confidence = parseFloat(field?.confidence || 0);
+
+    if (isConflict) conflicts += 1;
+    if (isConflict || !hasValue) {
+      red += 1;
+      return;
+    }
+    if (confidence >= 0.85) {
+      green += 1;
+      return;
+    }
+    if (confidence >= 0.6) {
+      yellow += 1;
+      return;
+    }
+    red += 1;
+  });
+
+  return { total: values.length, green, yellow, red, conflicts };
+};
+
+// â”€â”€â”€ MAIN COMPONENT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const OrderDetail = () => {
   const { orderId } = useParams();
@@ -283,12 +480,15 @@ const OrderDetail = () => {
   const [conflictModal, setConflictModal] = useState({ open: false, field: null, choice: '', manualValue: '', reason: '' });
   const [uploadModal, setUploadModal] = useState({ open: false, files: [] });
   const [approveModal, setApproveModal] = useState({ open: false, mode: 'confirm', missingFields: [], conflictCount: 0 });
+  const [undoApprovalOpen, setUndoApprovalOpen] = useState(false);
 
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
   const [isSubmittingConflict, setIsSubmittingConflict] = useState(false);
   const [isSubmittingDecision, setIsSubmittingDecision] = useState(false);
   const [isAddingDocuments, setIsAddingDocuments] = useState(false);
   const [isApprovingOrder, setIsApprovingOrder] = useState(false);
+  const [isUndoingOrderApproval, setIsUndoingOrderApproval] = useState(false);
+  const [replacingDocId, setReplacingDocId] = useState('');
   const [isVerifyingEligibility, setIsVerifyingEligibility] = useState(false);
   const [docTypeChoice, setDocTypeChoice] = useState('accept_classifier');
 
@@ -296,6 +496,11 @@ const OrderDetail = () => {
     setIsLoadingFields(true);
     try {
       const data = await getOrderFields(orderId);
+      console.log('[OrderDetail] getOrderFields response', {
+        orderId,
+        source: 'fetchFields',
+        data,
+      });
       setFields(data);
     } catch (e) {
       console.error('Failed to load fields:', e);
@@ -324,7 +529,17 @@ const OrderDetail = () => {
         if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
         if (shouldLoadFields(data)) {
           setIsLoadingFields(true);
-          getOrderFields(orderId).then(r => setFields(r)).catch(() => {}).finally(() => setIsLoadingFields(false));
+          getOrderFields(orderId)
+            .then((r) => {
+              console.log('[OrderDetail] getOrderFields response', {
+                orderId,
+                source: 'fetchStatus->shouldLoadFields',
+                data: r,
+              });
+              setFields(r);
+            })
+            .catch(() => {})
+            .finally(() => setIsLoadingFields(false));
         }
         fetchDocuments();
       }
@@ -368,6 +583,38 @@ const OrderDetail = () => {
       })
       .finally(() => setIsLoadingPatientOrders(false));
   }, [order?.patient_id, order?.awaiting_csr, order?.identity_decision_status]);
+
+  useEffect(() => {
+    if (!order || fields || isLoadingFields || !shouldLoadFields(order)) return;
+    fetchFields();
+  }, [order, fields, isLoadingFields, fetchFields]);
+
+  useEffect(() => {
+    const hasSummaryPayload =
+      Boolean(getOrderSummaryText(order)) ||
+      order?.completeness_score != null ||
+      Array.isArray(order?.missing_documents) ||
+      Array.isArray(order?.extraction?.missing_documents);
+
+    if (!orderId || hasSummaryPayload) return;
+
+    let cancelled = false;
+
+    listOrders({ limit: 200 })
+      .then((data) => {
+        if (cancelled) return;
+        const matchedOrder = (data?.orders || []).find((item) => item.order_id === orderId);
+        if (!matchedOrder) return;
+        setOrder((prev) => ({ ...(prev || {}), ...matchedOrder }));
+      })
+      .catch((e) => {
+        console.error('Failed to hydrate order summary from orders list:', e);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId, order]);
 
   const handleCopy = (text) => { navigator.clipboard.writeText(text); toast.success('Copied to clipboard'); };
 
@@ -419,13 +666,13 @@ const OrderDetail = () => {
       } else if (payload.decision === 'cancel_mismatch' || payload.decision === 'split_order') {
         navigate('/admin/intake');
       } else if (payload.decision === 'split_and_create') {
-        toast.success('Documents split — both patients now processing separately');
+        toast.success('Documents split â€” both patients now processing separately');
         navigate('/admin/intake');
       } else if (payload.decision === 'partial_merge') {
-        toast.success('Docs merged — both orders now processing');
+        toast.success('Docs merged â€” both orders now processing');
         navigate('/admin/intake');
       } else if (payload.decision === 'combined_resolve') {
-        toast.success('All issues resolved — order(s) now processing');
+        toast.success('All issues resolved â€” order(s) now processing');
         navigate('/admin/intake');
       } else if (payload.decision === 'continue_existing_order') {
         toast.success('Documents merged into existing orders');
@@ -437,6 +684,7 @@ const OrderDetail = () => {
         'proceed_mismatch',
         'proceed_doc_type',
         'override_doc_type',
+        'continue_as_new_order',
         'continue_existing_patient',
         'continue_new_patient',
         'start_new_order',
@@ -447,6 +695,19 @@ const OrderDetail = () => {
       }
     } catch (e) { toast.error(e.message); }
     finally { setIsSubmittingDecision(false); }
+  };
+
+  const handleCancelDuplicateOrder = async () => {
+    setIsSubmittingDecision(true);
+    try {
+      await deleteOrder(orderId);
+      toast.success('Order cancelled');
+      navigate('/admin/intake');
+    } catch (e) {
+      toast.error(e.message || 'Failed to cancel order');
+    } finally {
+      setIsSubmittingDecision(false);
+    }
   };
 
   const handleMergeDecision = async (decision, targetOrderId) => {
@@ -515,7 +776,7 @@ const OrderDetail = () => {
       formData.append('doc_types', JSON.stringify(validFiles.map(f => f.docType === 'Auto-detect' ? 'auto' : f.docType)));
       validFiles.forEach(f => formData.append('files', f.file));
       await addOrderDocuments(orderId, formData);
-      toast.success('Documents added — extraction restarting');
+      toast.success('Documents added â€” extraction restarting');
       setUploadModal({ open: false, files: [] });
       setFields(null);
       setOrder(prev => prev ? ({ ...prev, status: 'pending' }) : { status: 'pending' });
@@ -526,6 +787,24 @@ const OrderDetail = () => {
       toast.error(e.message || 'Failed to add documents');
     } finally {
       setIsAddingDocuments(false);
+    }
+  };
+
+  const handleReplaceDocument = async (doc, file) => {
+    const docId = getDocumentId(doc);
+    if (!docId || !file) return;
+
+    setReplacingDocId(docId);
+    try {
+      await replaceDocument(orderId, docId, file);
+      toast.success('Document replaced');
+      fetchDocuments();
+      fetchFields();
+      fetchStatus();
+    } catch (e) {
+      toast.error(e.message || 'Failed to replace document');
+    } finally {
+      setReplacingDocId('');
     }
   };
 
@@ -542,7 +821,7 @@ const OrderDetail = () => {
     setIsApprovingOrder(true);
     try {
       const result = await approveOrder(orderId, { overrideMissing });
-      toast.success('Order approved');
+      toast.success('Proceeding with validation');
       setApproveModal({ open: false, mode: 'confirm', conflictCount: 0, missingFields: [] });
       setOrder(prev => ({ ...(prev || {}), ...(result || {}), status: 'complete' }));
       if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
@@ -558,6 +837,21 @@ const OrderDetail = () => {
     }
   };
 
+  const submitUndoApproval = async () => {
+    setIsUndoingOrderApproval(true);
+    try {
+      await undoAction(orderId, { action_type: 'order_approval' });
+      toast.success('Order reopened for editing');
+      setUndoApprovalOpen(false);
+      fetchStatus();
+      fetchFields();
+    } catch (e) {
+      toast.error(e.message || 'Failed to undo approval');
+    } finally {
+      setIsUndoingOrderApproval(false);
+    }
+  };
+
   const handleEditSave = async () => {
     if (!editModal.newValue || !editModal.reason) { toast.error('Value and reason are required'); return; }
     setIsSubmittingEdit(true);
@@ -570,21 +864,89 @@ const OrderDetail = () => {
     finally { setIsSubmittingEdit(false); }
   };
 
-  const handleResolveConflict = async () => {
-    const { field, choice, manualValue, reason } = conflictModal;
-    if ((!choice && !manualValue) || !reason) { toast.error('Resolution and reason are required'); return; }
-    let resolutionType = 'manual_entry';
-    let chosenValue = manualValue;
-    if (choice === 'opt1') { resolutionType = 'picked_option_1'; chosenValue = field.conflict_details.option_1.value; }
-    else if (choice === 'opt2') { resolutionType = 'picked_option_2'; chosenValue = field.conflict_details.option_2.value; }
+  const submitFieldUndo = async (field) => {
+    if (!field?.fieldName) return;
+
+    try {
+      await undoAction(orderId, {
+        action_type: hasResolutionHistory(field) ? 'conflict_resolution' : 'field_edit',
+        field_name: field.fieldName,
+      });
+      toast.success('Field reverted successfully');
+      fetchFields();
+      fetchStatus();
+    } catch (e) {
+      toast.error(e.message || 'Failed to undo field change');
+    }
+  };
+
+  const useHcpcsSuggestion = async (field, suggestion) => {
+    const code = suggestion?.code || suggestion?.hcpcs_code;
+    if (!field?.fieldName || !code) return;
+
+    try {
+      await editField(orderId, field.fieldName, code, 'Selected from HCPCS suggestions');
+      toast.success('HCPCS code selected');
+      fetchFields();
+    } catch (e) {
+      toast.error(e.message || 'Failed to select HCPCS code');
+    }
+  };
+
+  const getConflictOptions = (field) => {
+    const conflictValues = field?.conflict_values;
+    if (Array.isArray(conflictValues)) return conflictValues;
+    if (Array.isArray(conflictValues?.options)) return conflictValues.options;
+
+    const legacyOptions = [field?.conflict_details?.option_1, field?.conflict_details?.option_2].filter(Boolean);
+    return legacyOptions;
+  };
+
+  const getAiRecommendation = (field) => {
+    const conflictValues = field?.conflict_values;
+    if (conflictValues?.ai_recommendation) return conflictValues.ai_recommendation;
+    return field?.ai_recommendation || null;
+  };
+
+  const openConflictModal = (field) => {
+    setConflictModal({
+      open: true,
+      field,
+      choice: '',
+      manualValue: '',
+      reason: '',
+    });
+  };
+
+  const submitConflictResolution = async ({ field, chosenValue, editReason, resolutionType }) => {
+    if (!field?.fieldName || chosenValue === null || chosenValue === undefined || chosenValue === '') {
+      toast.error('A resolution value is required');
+      return;
+    }
+
     setIsSubmittingConflict(true);
     try {
-      await resolveConflict(orderId, field.name, chosenValue, reason, resolutionType);
+      await resolveConflict(orderId, field.fieldName, chosenValue, editReason, resolutionType);
       toast.success('Conflict resolved');
       setConflictModal({ open: false, field: null, choice: '', manualValue: '', reason: '' });
       fetchFields();
     } catch (e) { toast.error(e.message); }
     finally { setIsSubmittingConflict(false); }
+  };
+
+  const handleResolveConflict = async () => {
+    const chosenValue = conflictModal.manualValue?.trim();
+    if (!chosenValue) {
+      toast.error('Custom value is required');
+      return;
+    }
+
+    await submitConflictResolution({
+      field: conflictModal.field,
+      chosenValue,
+      editReason: 'Resolved conflict based on manual selection',
+      resolutionType: 'manual_entry',
+    });
   };
 
   const handleVerifyEligibility = async () => {
@@ -615,25 +977,39 @@ const OrderDetail = () => {
 
   const isAwaitingCSRDecision = order?.awaiting_csr || order?.status === 'awaiting_csr_decision';
   const canAddDocuments = ['extracted', 'awaiting_csr_decision'].includes(order?.status);
-  const canApproveOrder = order?.status === 'extracted';
+  const canApproveOrder = isDerivedReadyForReview(order);
   const canDeleteOrder = !!order && order.status !== 'complete';
+  const canUndoApproval = order?.status === 'complete';
   const isPendingMergeDecision = order?.awaiting_csr === true && order?.identity_decision_status === 'pending';
+  const corruptDocuments = useMemo(() => (
+    (documents || []).filter((doc) => String(doc?.status || '').toLowerCase() === 'corrupt')
+  ), [documents]);
+
+  const normalizedFieldMap = useMemo(() => getNormalizedFieldsMap(fields), [fields]);
+  const normalizedFieldsSummary = useMemo(() => getFieldsSummary(fields, normalizedFieldMap), [fields, normalizedFieldMap]);
+  const summaryText = useMemo(() => getOrderSummaryText(order), [order]);
+  const fieldBreakdown = useMemo(() => getFieldBreakdown(order), [order]);
+  const missingDocuments = useMemo(() => getMissingDocuments(order), [order]);
 
   const groupedFields = useMemo(() => {
-    if (!fields?.fields) return {};
+    if (!Object.keys(normalizedFieldMap).length) return {};
     const groups = {};
-    Object.entries(fields.fields).forEach(([fieldName, wrapper]) => {
-      const agentKey = (wrapper.source_agents?.[0] || 'other');
+    Object.entries(normalizedFieldMap).forEach(([fieldName, wrapper]) => {
+      const sourceAgents = parseSourceAgents(wrapper.source_agents);
+      const agentKey = sourceAgents[0] || wrapper.source_agent || 'other';
       if (!groups[agentKey]) groups[agentKey] = [];
-      groups[agentKey].push({ fieldName, ...wrapper });
+      groups[agentKey].push({ fieldName, ...wrapper, source_agents: sourceAgents });
     });
     return groups;
-  }, [fields]);
+  }, [normalizedFieldMap]);
 
-  const activeSemanticTabs = useMemo(() =>
-    SEMANTIC_TABS.filter(tab => tab.agents.some(key => groupedFields[key]?.length > 0)),
-    [groupedFields]
-  );
+  const activeSemanticTabs = useMemo(() => {
+    const baseTabs = SEMANTIC_TABS.filter(tab => tab.agents.some(key => groupedFields[key]?.length > 0));
+    if (groupedFields.other?.length > 0) {
+      return [...baseTabs, { id: 'other', label: 'Other', agents: ['other'] }];
+    }
+    return baseTabs;
+  }, [groupedFields]);
 
   const getTabCounts = (tab) => {
     const allFields = tab.agents.flatMap(key => groupedFields[key] || []);
@@ -648,11 +1024,11 @@ const OrderDetail = () => {
   };
 
   const getFieldBorderColor = (field) => {
-    if (field.status === 'conflict' || !field.value) return 'border-l-red-500';
+    if (field.status === 'conflict' || !field.value) return 'bg-red-500';
     const conf = parseFloat(field.confidence || 0);
-    if (conf >= 0.85) return 'border-l-emerald-500';
-    if (conf >= 0.60) return 'border-l-amber-500';
-    return 'border-l-red-500';
+    if (conf >= 0.85) return 'bg-emerald-500';
+    if (conf >= 0.60) return 'bg-amber-500';
+    return 'bg-red-500';
   };
 
   const formatFieldName = (name) => name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
@@ -670,7 +1046,7 @@ const OrderDetail = () => {
     const docName = src.document_name || src.filename || src.document || src.doc_name || null;
     const page = src.page_number || src.page || null;
     if (!docName) return null;
-    return page ? `${docName} · Page ${page}` : docName;
+    return page ? `${docName} Â· Page ${page}` : docName;
   };
 
   const sortFields = (fieldList) => [...fieldList].sort((a, b) => {
@@ -681,7 +1057,7 @@ const OrderDetail = () => {
     return (a.confidence || 0) - (b.confidence || 0);
   });
 
-  // ─── DOCUMENTS ACCORDION ──────────────────────────────────────────────────────
+  // â”€â”€â”€ DOCUMENTS ACCORDION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const renderDocumentsAccordion = () => {
     const docs = documents || [];
@@ -776,7 +1152,102 @@ const OrderDetail = () => {
     );
   };
 
-  // ─── IDENTITY CANDIDATE MATCHES ──────────────────────────────────────────────
+  const renderCorruptDocumentsWarning = () => {
+    if (!corruptDocuments.length) return null;
+
+    return (
+      <Card className="rounded-2xl border-2 border-red-500/20 bg-red-500/[0.03]">
+        <CardContent className="space-y-4 p-5">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+            <div>
+              <h3 className="text-sm font-black tracking-tight text-red-700">Corrupted Documents</h3>
+              <p className="text-xs font-medium text-red-700/75">Replace corrupted files to continue extraction.</p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {corruptDocuments.map((doc) => {
+              const docId = getDocumentId(doc);
+              const isReplacing = replacingDocId === docId;
+
+              return (
+                <div key={docId || getDocumentFilename(doc)} className="flex flex-col gap-3 rounded-xl border border-red-500/15 bg-card/70 p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="min-w-0 truncate text-xs font-bold" title={getDocumentFilename(doc)}>
+                    {getDocumentFilename(doc)}
+                  </p>
+                  <label className={`inline-flex h-9 cursor-pointer items-center justify-center rounded-lg border border-red-500/20 px-3 text-[10px] font-black uppercase tracking-widest text-red-600 transition-colors hover:bg-red-500/5 ${isReplacing ? 'pointer-events-none opacity-60' : ''}`}>
+                    {isReplacing ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Upload className="mr-2 h-3.5 w-3.5" />}
+                    Replace Document
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      className="sr-only"
+                      disabled={isReplacing}
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = '';
+                        handleReplaceDocument(doc, file);
+                      }}
+                    />
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const renderOrderSummaryCard = () => {
+    const hasSummary = Boolean(summaryText);
+    const hasStructuredSummary = normalizedFieldsSummary.total > 0;
+
+    return (
+      <Card className="border border-border/20 rounded-2xl bg-card overflow-hidden">
+        <CardHeader>
+          <CardTitle>Order Summary</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {hasSummary ? (
+            <p className="text-sm mb-4">{summaryText}</p>
+          ) : hasStructuredSummary ? (
+            <p className="text-sm mb-4 text-muted-foreground">
+              Text summary not returned by the backend. Structured extraction summary: {normalizedFieldsSummary.total} total fields, {normalizedFieldsSummary.green} green, {normalizedFieldsSummary.yellow} yellow, {normalizedFieldsSummary.red} red.
+            </p>
+          ) : (
+            <p className="text-sm mb-4 text-muted-foreground">Summary will appear after extraction completes</p>
+          )}
+
+          {hasStructuredSummary && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs mt-4">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 bg-red-500 rounded-full" />
+                <span>RED: {normalizedFieldsSummary.red}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 bg-amber-500 rounded-full" />
+                <span>YELLOW: {normalizedFieldsSummary.yellow}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 bg-emerald-500 rounded-full" />
+                <span>GREEN: {normalizedFieldsSummary.green}</span>
+              </div>
+            </div>
+          )}
+
+          {missingDocuments?.length > 0 && (
+            <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
+              {'Missing documents: '}
+              {missingDocuments.join(', ')}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
+
+  // â”€â”€â”€ IDENTITY CANDIDATE MATCHES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const renderIdentityCandidates = () => {
     const candidates = order?.identity_candidate_matches || [];
@@ -788,7 +1259,7 @@ const OrderDetail = () => {
         <div className="flex items-center gap-2">
           <Users className="w-4 h-4 text-amber-600 shrink-0" />
           <p className="text-sm font-semibold text-amber-700">
-            {validCandidates.length} candidate patient match{validCandidates.length > 1 ? 'es' : ''} found — select how to proceed
+            {validCandidates.length} candidate patient match{validCandidates.length > 1 ? 'es' : ''} found â€” select how to proceed
           </p>
         </div>
 
@@ -806,13 +1277,13 @@ const OrderDetail = () => {
             return (
               <div key={patient.patient_id || i} className="rounded-2xl border-2 border-border/40 bg-card p-5 space-y-4 hover:border-primary/20 transition-colors">
                 <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-xs">
-                  <div><MetaLabel>Name</MetaLabel><span className="font-bold">{[patient.first_name, patient.last_name].filter(Boolean).join(' ') || '—'}</span></div>
-                  <div><MetaLabel>Date of Birth</MetaLabel><span className="font-bold">{patient.dob || '—'}</span></div>
+                  <div><MetaLabel>Name</MetaLabel><span className="font-bold">{[patient.first_name, patient.last_name].filter(Boolean).join(' ') || 'â€”'}</span></div>
+                  <div><MetaLabel>Date of Birth</MetaLabel><span className="font-bold">{patient.dob || 'â€”'}</span></div>
                   {patient.member_id && <div><MetaLabel>Member ID</MetaLabel><span className="font-bold font-mono">{patient.member_id}</span></div>}
                   {patient.medicare_id && <div><MetaLabel>Medicare ID</MetaLabel><span className="font-bold font-mono">{patient.medicare_id}</span></div>}
                   {patient.payer_id && <div><MetaLabel>Payer ID</MetaLabel><span className="font-bold font-mono">{patient.payer_id}</span></div>}
-                  <div><MetaLabel>Match Tier</MetaLabel><span className="font-bold">{c.tier ?? '—'}</span></div>
-                  <div><MetaLabel>Confidence</MetaLabel><span className="font-bold">{c.confidence != null ? `${Math.round(c.confidence * 100)}%` : '—'}</span></div>
+                  <div><MetaLabel>Match Tier</MetaLabel><span className="font-bold">{c.tier ?? 'â€”'}</span></div>
+                  <div><MetaLabel>Confidence</MetaLabel><span className="font-bold">{c.confidence != null ? `${Math.round(c.confidence * 100)}%` : ''}</span></div>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {c.has_incomplete_prior_order && <span className="text-[10px] font-black uppercase tracking-widest bg-amber-500/10 text-amber-700 border border-amber-500/20 px-2.5 py-1 rounded-lg">Incomplete prior order</span>}
@@ -891,7 +1362,7 @@ const OrderDetail = () => {
     );
   };
 
-  // ─── CSR DECISION BODY ────────────────────────────────────────────────────────
+  // â”€â”€â”€ CSR DECISION BODY â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const renderMergeDecisionCard = () => {
     const existingOrder = mergeDecisionExistingOrder;
@@ -954,6 +1425,55 @@ const OrderDetail = () => {
   };
 
   const renderCSRBody = () => {
+    if (order?.decision_type === 'duplicate_files') {
+      const duplicateFilenames = order?.duplicate_filenames || [];
+      const duplicateMode = order?.all_duplicates ? 'All uploaded documents are duplicates.' : 'Some uploaded documents are duplicates.';
+
+      return (
+        <div className="space-y-5">
+          <div className="rounded-2xl bg-violet-500/10 border border-violet-500/20 p-5 space-y-4">
+            <h4 className="text-sm font-black tracking-tight text-violet-700">Duplicate Documents Detected</h4>
+            <p className="text-sm font-medium text-violet-700/80 leading-relaxed">
+              {order?.message || 'Duplicate documents were detected in this order.'}
+            </p>
+            <div className="rounded-xl border border-violet-500/10 bg-card/70 p-4">
+              <MetaLabel>Duplicate mode</MetaLabel>
+              <p className="text-xs font-bold text-violet-700">{duplicateMode}</p>
+            </div>
+            {duplicateFilenames.length > 0 && (
+              <div className="rounded-xl border border-violet-500/10 bg-card/70 p-4">
+                <MetaLabel>Duplicate files</MetaLabel>
+                <ul className="mt-2 space-y-1">
+                  {duplicateFilenames.map((filename) => (
+                    <li key={filename} className="truncate text-xs font-mono text-muted-foreground" title={filename}>
+                      {filename}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              onClick={() => handleCSRDecision({ decision: 'continue_as_new_order' })}
+              disabled={isSubmittingDecision}
+              className="h-10 rounded-xl px-6 font-black uppercase tracking-widest text-[10px] shadow-xl shadow-primary/20"
+            >
+              {isSubmittingDecision ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Continue as New Order'}
+            </Button>
+            <Button
+              onClick={handleCancelDuplicateOrder}
+              disabled={isSubmittingDecision}
+              variant="outline"
+              className="h-10 rounded-xl border-2 border-red-500/20 px-6 text-red-600 font-black uppercase tracking-widest text-[10px] hover:bg-red-500/5"
+            >
+              {isSubmittingDecision ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Cancel Order'}
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
     if (order?.decision_type === 'combined_review') {
       const conflict = order?.identity_mismatch_details || {};
       const groups = conflict.all_groups || [];
@@ -1035,7 +1555,7 @@ const OrderDetail = () => {
                 You selected <span className="font-black">{csr_type}</span> but <span className="font-black">{filename}</span> appears to be <span className="font-black">{detected_type}</span> {confidence && `(${confidence} confidence)`}.
               </p>
               <p className="text-sm font-medium text-amber-700/80">
-                Classifier detected different types — accept or keep your selection?
+                Classifier detected different types â€” accept or keep your selection?
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -1077,7 +1597,7 @@ const OrderDetail = () => {
       );
     }
 
-    // Mixed patient documents — show before any other decision
+    // Mixed patient documents â€” show before any other decision
     if (order?.decision_type === 'mixed_patient_docs' || order?.error_message?.startsWith('Mixed patient documents')) {
       const conflict = order?.identity_mismatch_details || {};
       const groups = conflict.all_groups || [];
@@ -1369,7 +1889,7 @@ const OrderDetail = () => {
 
         {!hasCandidates && order?.patient_match_tier === 4 && (
           <div className="space-y-4">
-            <p className="text-sm font-medium leading-relaxed">Possible patient match found <span className="font-black text-amber-700">(Tier 4 — partial match)</span>. Please confirm this is the correct patient before extraction proceeds.</p>
+            <p className="text-sm font-medium leading-relaxed">Possible patient match found <span className="font-black text-amber-700">(Tier 4 â€” partial match)</span>. Please confirm this is the correct patient before extraction proceeds.</p>
             <div className="flex flex-wrap gap-3">
               <Button onClick={() => handleCSRDecision({ decision: 'confirm_identity' })} disabled={isSubmittingDecision} className="h-10 rounded-xl px-6 font-black uppercase tracking-widest text-[10px] shadow-xl shadow-primary/20">Confirm Patient</Button>
               <Button onClick={() => handleCSRDecision({ decision: 'cancel_mismatch' })} disabled={isSubmittingDecision} variant="outline" className="h-10 rounded-xl border-2 border-red-500/20 px-6 text-red-600 font-black uppercase tracking-widest text-[10px] hover:bg-red-500/5">Cancel Order</Button>
@@ -1428,7 +1948,7 @@ const OrderDetail = () => {
     </Card>
   );
 
-  // ─── FIELD TABS ───────────────────────────────────────────────────────────────
+  // â”€â”€â”€ FIELD TABS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const renderFieldTabs = () => {
     if (isLoadingFields) {
@@ -1454,12 +1974,14 @@ const OrderDetail = () => {
           {activeSemanticTabs.map(tab => {
             const { red, yellow } = getTabCounts(tab);
             const attention = red + yellow;
+            const TabIcon = tab.icon;
             return (
               <TabsTrigger
                 key={tab.id}
                 value={tab.id}
-                className="flex items-center gap-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest px-4 py-2 data-[state=active]:bg-card data-[state=active]:shadow-sm"
+                className="flex items-center gap-2 rounded-xl text-[10px] font-medium uppercase tracking-[0.18em] px-4 py-2 data-[state=active]:bg-card data-[state=active]:shadow-sm"
               >
+                {TabIcon && <TabIcon className="h-3.5 w-3.5 shrink-0" />}
                 {tab.label}
                 {attention > 0 && (
                   <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full leading-none ${red > 0 ? 'bg-red-500 text-white' : 'bg-amber-500 text-white'}`}>
@@ -1484,19 +2006,34 @@ const OrderDetail = () => {
                     const source = getFieldSourceLabel(field);
                     const borderColor = getFieldBorderColor(field);
                     const conf = Math.round((field.confidence || 0) * 100);
+                    const isConflictField = field.has_conflict || field.status === 'conflict';
+                    const rawExtractions = getRawExtractions(field);
+                    const isHcpcsField = field.fieldName === 'hcpcs_code';
+                    const hcpcsSuggestions = Array.isArray(rawExtractions.hcpcs_suggestions)
+                      ? rawExtractions.hcpcs_suggestions.slice(0, 3)
+                      : [];
+                    const hcpcsVerification = rawExtractions.hcpcs_verification;
+                    const showHcpcsSuggestions = isHcpcsField && !displayValue && hcpcsSuggestions.length > 0;
+                    const showHcpcsVerification = isHcpcsField && displayValue && hcpcsVerification;
+                    const verificationVerdict = hcpcsVerification?.verdict;
 
                     return (
                       <div
                         key={field.fieldName}
-                        className={`border-l-4 ${borderColor} bg-card rounded-r-xl px-4 py-3 space-y-2 border border-border/20`}
+                        className={`relative overflow-hidden rounded-xl border border-border/20 bg-card px-4 py-3 pl-6 space-y-2 ${isConflictField ? 'cursor-pointer hover:border-red-500/30 hover:bg-red-500/[0.02]' : ''}`}
+                        onClick={isConflictField ? () => openConflictModal(field) : undefined}
                       >
+                        <span
+                          aria-hidden="true"
+                          className={`absolute bottom-1.5 left-0 top-1.5 w-1 rounded-full ${borderColor}`}
+                        />
                         {/* Label row */}
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-1.5 min-w-0">
                             <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 truncate">
                               {formatFieldName(field.fieldName)}
                             </label>
-                            {field.status === 'conflict' && (
+                            {isConflictField && (
                               <span className="text-[8px] font-black bg-red-500 text-white px-1.5 py-0.5 rounded tracking-widest uppercase shrink-0">Conflict</span>
                             )}
                             {field.needs_csr_review && (
@@ -1504,16 +2041,15 @@ const OrderDetail = () => {
                             )}
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
-                            {field.status === 'conflict' && (
+                            {isConflictField && (
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 className="h-6 px-2 text-[9px] font-black text-red-600 uppercase tracking-widest hover:bg-red-500/10"
-                                onClick={() => setConflictModal({
-                                  open: true,
-                                  field: { name: field.fieldName, conflict_details: { option_1: field.conflict_values?.[0], option_2: field.conflict_values?.[1] } },
-                                  choice: '', manualValue: '', reason: '',
-                                })}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openConflictModal(field);
+                                }}
                               >
                                 Resolve
                               </Button>
@@ -1522,10 +2058,27 @@ const OrderDetail = () => {
                               variant="ghost"
                               size="icon"
                               className="w-6 h-6 rounded-md hover:bg-muted/60"
-                              onClick={() => setEditModal({ open: true, fieldName: field.fieldName, currentValue: field.value, newValue: String(field.value || ''), reason: '' })}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditModal({ open: true, fieldName: field.fieldName, currentValue: field.value, newValue: String(field.value || ''), reason: '' });
+                              }}
                             >
                               <Edit2 className="w-3 h-3" />
                             </Button>
+                            {canUndoField(field) && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Undo field change"
+                                className="w-6 h-6 rounded-md hover:bg-muted/60"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  submitFieldUndo(field);
+                                }}
+                              >
+                                <RotateCcw className="w-3 h-3" />
+                              </Button>
+                            )}
                           </div>
                         </div>
 
@@ -1535,8 +2088,59 @@ const OrderDetail = () => {
                             ? 'bg-red-500/5 border-red-500/20 text-muted-foreground/40 italic'
                             : 'bg-muted/20 border-border/30 text-foreground'
                         }`}>
-                          {displayValue || 'Not found'}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span>{displayValue || 'Not found'}</span>
+                            {showHcpcsVerification && verificationVerdict === 'CORRECT' && (
+                              <span title={hcpcsVerification.reasoning || ''} className="inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-600">
+                                ✓ Verified
+                              </span>
+                            )}
+                            {showHcpcsVerification && verificationVerdict === 'POSSIBLY_WRONG' && (
+                              <span title={hcpcsVerification.reasoning || ''} className="inline-flex rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-amber-600">
+                                ⚠ Review
+                              </span>
+                            )}
+                          </div>
                         </div>
+
+                        {showHcpcsSuggestions && (
+                          <div className="space-y-2 rounded-xl border border-blue-500/20 bg-blue-500/[0.03] p-3">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-blue-700">Suggested HCPCS Codes</p>
+                            <div className="space-y-2">
+                              {hcpcsSuggestions.map((suggestion, index) => {
+                                const code = suggestion?.code || suggestion?.hcpcs_code;
+                                const confidence = suggestion?.confidence != null ? Math.round(Number(suggestion.confidence) * 100) : null;
+
+                                return (
+                                  <div key={`${code || 'suggestion'}-${index}`} className="rounded-lg border border-blue-500/10 bg-card/80 p-3 space-y-2">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="min-w-0">
+                                        <p className="font-mono text-sm font-black text-blue-700">{code || 'Unknown code'}</p>
+                                        {confidence != null && (
+                                          <p className="text-[10px] font-bold text-muted-foreground">{confidence}% confidence</p>
+                                        )}
+                                      </div>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 rounded-lg px-3 text-[9px] font-black uppercase tracking-widest"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          useHcpcsSuggestion(field, suggestion);
+                                        }}
+                                      >
+                                        Use This Code
+                                      </Button>
+                                    </div>
+                                    {suggestion?.reasoning && (
+                                      <p className="text-[11px] leading-relaxed text-muted-foreground">{suggestion.reasoning}</p>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
 
                         {/* Footer: hover-tooltip icons */}
                         <div className="flex items-center gap-3 pt-0.5">
@@ -1570,7 +2174,7 @@ const OrderDetail = () => {
                   })}
                 </div>
 
-                {/* Eligibility Verification — Insurance & Billing tab only */}
+                {/* Eligibility Verification â€” Insurance & Billing tab only */}
                 {tab.id === 'insurance' && (
                   <div className="border border-border/30 rounded-2xl p-6 bg-card space-y-4">
                     <div className="flex items-start gap-3">
@@ -1604,26 +2208,26 @@ const OrderDetail = () => {
   const renderFieldSummaryPills = () => (
     <div className="flex items-center gap-3 flex-wrap">
       <span className="text-[10px] font-black bg-muted px-3 py-1.5 rounded-full uppercase tracking-widest text-muted-foreground/60">
-        Total: {fields?.summary?.total || 0}
+        Total: {normalizedFieldsSummary.total}
       </span>
       <span className="text-[10px] font-black bg-emerald-500/10 text-emerald-600 px-3 py-1.5 rounded-full uppercase tracking-widest">
-        ✓ {fields?.summary?.green || 0}
+        Green: {normalizedFieldsSummary.green}
       </span>
       <span className="text-[10px] font-black bg-amber-500/10 text-amber-600 px-3 py-1.5 rounded-full uppercase tracking-widest">
-        ~ {fields?.summary?.yellow || 0}
+        Yellow: {normalizedFieldsSummary.yellow}
       </span>
       <span className="text-[10px] font-black bg-red-500/10 text-red-600 px-3 py-1.5 rounded-full uppercase tracking-widest">
-        ! {fields?.summary?.red || 0}
+        Red: {normalizedFieldsSummary.red}
       </span>
-      {(fields?.summary?.conflicts || 0) > 0 && (
+      {normalizedFieldsSummary.conflicts > 0 && (
         <span className="text-[10px] font-black bg-red-500 text-white px-3 py-1.5 rounded-full uppercase tracking-widest animate-pulse">
-          ⚠ {fields.summary.conflicts} Conflicts
+          Conflicts: {normalizedFieldsSummary.conflicts}
         </span>
       )}
     </div>
   );
 
-  // ─── IDENTITY ALERT CARDS ─────────────────────────────────────────────────────
+  // â”€â”€â”€ IDENTITY ALERT CARDS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const renderIdentityAlerts = () => (
     <>
@@ -1648,7 +2252,7 @@ const OrderDetail = () => {
                 <thead><tr className="text-muted-foreground/60 border-b border-red-500/10"><th className="text-left py-1 font-black">FIELD</th><th className="text-left py-1 font-black">EXPECTED</th><th className="text-left py-1 font-black">EXTRACTED</th></tr></thead>
                 <tbody className="divide-y divide-red-500/10">
                   {Object.entries(order.identity_mismatch_details || {}).map(([f, d]) => (
-                    <tr key={f}><td className="py-2 font-black uppercase tracking-tighter">{f}</td><td className="py-2 font-bold">{d.expected || '—'}</td><td className="py-2 font-bold text-red-600">{d.extracted || '—'}</td></tr>
+                    <tr key={f}><td className="py-2 font-black uppercase tracking-tighter">{f}</td><td className="py-2 font-bold">{d.expected || 'â€”'}</td><td className="py-2 font-bold text-red-600">{d.extracted || 'â€”'}</td></tr>
                   ))}
                 </tbody>
               </table>
@@ -1659,12 +2263,22 @@ const OrderDetail = () => {
     </>
   );
 
-  // ─── LAYOUT ──────────────────────────────────────────────────────────────────
+  // â”€â”€â”€ LAYOUT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const renderOrderActions = () => {
-    if (!canAddDocuments && !canApproveOrder && !canDeleteOrder) return null;
+    if (!canAddDocuments && !canApproveOrder && !canDeleteOrder && !canUndoApproval) return null;
     return (
       <div className="flex items-center gap-2 flex-wrap justify-end">
+        {canUndoApproval && (
+          <Button
+            variant="outline"
+            onClick={() => setUndoApprovalOpen(true)}
+            className="h-9 rounded-lg px-4 text-[10px] font-black uppercase tracking-widest border-amber-500/20 text-amber-600 hover:bg-amber-500/5"
+          >
+            <RotateCcw className="w-3.5 h-3.5 mr-2" />
+            Undo Approval
+          </Button>
+        )}
         {canAddDocuments && (
           <Button
             variant="outline"
@@ -1680,8 +2294,8 @@ const OrderDetail = () => {
             onClick={openApproveModal}
             className="h-9 rounded-lg px-4 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/20"
           >
-            <CheckCircle2 className="w-3.5 h-3.5 mr-2" />
-            Approve Order
+            <ChevronRight className="w-3.5 h-3.5 mr-2" />
+            Proceed with Validation
           </Button>
         )}
         {canDeleteOrder && (
@@ -1714,7 +2328,7 @@ const OrderDetail = () => {
 
   return (
     <div className="space-y-4 animate-in fade-in duration-500 pb-20">
-      {/* ── PAGE HEADER ── */}
+      {/* â”€â”€ PAGE HEADER â”€â”€ */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate('/admin/intake')} className="rounded-xl border border-border/40">
@@ -1730,10 +2344,10 @@ const OrderDetail = () => {
 
       {isCompactLayout ? (
         <>
-          {/* ── COMPACT TOP BAR ── */}
+          {/* â”€â”€ COMPACT TOP BAR â”€â”€ */}
           <div className="border border-border/20 rounded-2xl px-6 py-3 flex items-center justify-between bg-card/50 flex-wrap gap-3">
             <div className="flex items-center gap-3 flex-wrap">
-              <OrderStatusBadge status={order?.status} />
+              <OrderStatusBadge status={order?.status} order={order} />
               <span className="bg-primary/10 text-primary text-[10px] font-black uppercase px-2 py-0.5 rounded">{order?.disease}</span>
               <span className="text-[10px] text-muted-foreground/60">{formatDate(order?.created_at)}</span>
               <span className="text-xs font-bold text-muted-foreground/80">{patientName}</span>
@@ -1747,15 +2361,17 @@ const OrderDetail = () => {
             )}
           </div>
 
-          {/* ── DOCUMENTS ACCORDION (full width) ── */}
+          {/* â”€â”€ DOCUMENTS ACCORDION (full width) â”€â”€ */}
+          {renderOrderSummaryCard()}
           {renderDocumentsAccordion()}
+          {renderCorruptDocumentsWarning()}
 
-          {/* ── IDENTITY ALERTS (full width, if present) ── */}
+          {/* â”€â”€ IDENTITY ALERTS (full width, if present) â”€â”€ */}
           {(order?.identity_incomplete || order?.identity_mismatch) && (
             <div className="space-y-3">{renderIdentityAlerts()}</div>
           )}
 
-          {/* ── CSR PANEL (full width, if awaiting) ── */}
+          {/* â”€â”€ CSR PANEL (full width, if awaiting) â”€â”€ */}
           {isAwaitingCSRDecision && (!isMergeOrNewDecision(order) || isPendingMergeDecision) && (
             <Card className="border-2 border-amber-500 bg-amber-500/[0.03] rounded-2xl overflow-hidden shadow-xl shadow-amber-500/10 animate-in slide-in-from-top-2 duration-300">
               <div className="p-6 space-y-5">
@@ -1773,15 +2389,17 @@ const OrderDetail = () => {
             </Card>
           )}
 
-          {/* ── FIELD TABS (full width) ── */}
+          {/* â”€â”€ FIELD TABS (full width) â”€â”€ */}
           <div className="space-y-4 animate-in fade-in duration-500">
             {renderFieldTabs()}
           </div>
         </>
       ) : (
         <>
-          {/* ── DOCUMENTS ACCORDION (full layout) ── */}
+          {/* â”€â”€ DOCUMENTS ACCORDION (full layout) â”€â”€ */}
+          {renderOrderSummaryCard()}
           {renderDocumentsAccordion()}
+          {renderCorruptDocumentsWarning()}
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* LEFT COLUMN */}
@@ -1794,7 +2412,7 @@ const OrderDetail = () => {
                         <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/40">Order</p>
                         <span className="text-sm font-black">Clinical intake</span>
                       </div>
-                      <OrderStatusBadge status={order?.status} />
+                      <OrderStatusBadge status={order?.status} order={order} />
                     </div>
                     <div className="grid grid-cols-2 gap-4 pt-2">
                       <div className="space-y-1">
@@ -1982,7 +2600,7 @@ const OrderDetail = () => {
       <Dialog open={approveModal.open} onOpenChange={(v) => !v && setApproveModal({ open: false, mode: 'confirm', missingFields: [], conflictCount: 0 })}>
         <DialogContent className="max-w-lg rounded-[2rem] border-2 border-border/40 p-8">
           <DialogHeader className="space-y-3">
-            <DialogTitle className="text-xl font-black tracking-tight uppercase tracking-widest">Approve Order</DialogTitle>
+            <DialogTitle className="text-xl font-black tracking-tight uppercase tracking-widest">Proceed with Validation</DialogTitle>
           </DialogHeader>
           <div className="py-4 space-y-4">
             {approveModal.mode === 'conflicts' && (
@@ -2003,7 +2621,7 @@ const OrderDetail = () => {
               </div>
             )}
             {approveModal.mode === 'confirm' && (
-              <p className="text-sm font-medium leading-relaxed">Approve this order? This marks extraction as complete.</p>
+              <p className="text-sm font-medium leading-relaxed">Proceed with validation for this order? This marks extraction as complete.</p>
             )}
           </div>
           <DialogFooter className="gap-3">
@@ -2011,7 +2629,7 @@ const OrderDetail = () => {
               <>
                 <Button variant="ghost" onClick={() => setApproveModal({ open: false, mode: 'confirm', missingFields: [], conflictCount: 0 })} disabled={isApprovingOrder} className="h-11 flex-1 rounded-xl font-black uppercase tracking-widest text-[10px]">Cancel</Button>
                 <Button onClick={() => submitApproval(false)} disabled={isApprovingOrder} className="h-11 flex-1 rounded-xl font-black uppercase tracking-widest text-[10px]">
-                  {isApprovingOrder ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirm'}
+                  {isApprovingOrder ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Proceed'}
                 </Button>
               </>
             ) : (
@@ -2028,6 +2646,24 @@ const OrderDetail = () => {
         </DialogContent>
       </Dialog>
 
+      <AlertDialog open={undoApprovalOpen} onOpenChange={setUndoApprovalOpen}>
+        <AlertDialogContent className="rounded-[2rem] border-2 border-border/40">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-xl font-black tracking-tight">Undo approval?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will reopen the order for editing.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-xl font-bold" disabled={isUndoingOrderApproval}>Cancel</AlertDialogCancel>
+            <AlertDialogAction className="rounded-xl font-bold" onClick={submitUndoApproval} disabled={isUndoingOrderApproval}>
+              {isUndoingOrderApproval ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RotateCcw className="mr-2 h-4 w-4" />}
+              Undo Approval
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* EDIT MODAL */}
       <Dialog open={editModal.open} onOpenChange={(v) => !v && setEditModal({ ...editModal, open: false })}>
         <DialogContent className="max-w-md rounded-[2.5rem] border-2 border-border/40 p-8">
@@ -2038,7 +2674,7 @@ const OrderDetail = () => {
           <div className="space-y-6 py-4">
             <div className="space-y-2">
               <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 ml-1">Current Value</label>
-              <div className="p-4 rounded-xl bg-muted/30 border border-border/20 text-xs font-medium text-muted-foreground italic">{String(editModal.currentValue || '—')}</div>
+              <div className="p-4 rounded-xl bg-muted/30 border border-border/20 text-xs font-medium text-muted-foreground italic">{String(editModal.currentValue || 'â€”')}</div>
             </div>
             <div className="space-y-2">
               <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 ml-1">New Value</label>
@@ -2062,54 +2698,118 @@ const OrderDetail = () => {
 
       {/* CONFLICT MODAL */}
       <Dialog open={conflictModal.open} onOpenChange={(v) => !v && setConflictModal({ ...conflictModal, open: false })}>
-        <DialogContent className="max-w-3xl rounded-[2.5rem] border-2 border-border/40 p-10">
-          <DialogHeader className="space-y-3">
-            <DialogTitle className="text-2xl font-black tracking-tight uppercase tracking-widest">Resolve Conflict</DialogTitle>
-            <p className="text-xs font-black uppercase tracking-widest text-red-500">{conflictModal.field?.name?.replace(/_/g, ' ')}</p>
+        <DialogContent className="max-h-[90vh] w-[min(92vw,56rem)] overflow-hidden rounded-[2rem] border-2 border-border/40 p-0">
+          <DialogHeader className="space-y-3 border-b border-border/20 px-6 py-5 sm:px-8">
+            <DialogTitle className="text-2xl font-black tracking-tight">
+              Resolve Conflict: {formatFieldName(conflictModal.field?.fieldName || conflictModal.field?.name || 'Field')}
+            </DialogTitle>
+            <DialogDescription>
+              Multiple values found across documents. Select the correct value.
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-8 py-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {[1, 2].map((optNum) => {
-                const opt = conflictModal.field?.conflict_details?.[`option_${optNum}`];
-                if (!opt) return null;
-                const isSelected = conflictModal.choice === `opt${optNum}`;
-                return (
-                  <Card key={optNum} onClick={() => setConflictModal(prev => ({ ...prev, choice: `opt${optNum}`, manualValue: '' }))} className={`cursor-pointer transition-all duration-300 border-2 rounded-[2rem] p-6 space-y-4 ${isSelected ? 'border-primary bg-primary/5 shadow-xl shadow-primary/5 scale-[1.02]' : 'border-border/40 bg-card hover:border-primary/20'}`}>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/40">Option {optNum}</span>
-                      <div className="flex items-center gap-2">
-                        <ConfidenceDot confidence={opt.confidence} />
-                        <span className="text-[10px] font-black font-mono">{Math.round((opt.confidence || 0) * 100)}%</span>
-                      </div>
-                    </div>
-                    <p className="text-sm font-bold min-h-[48px] line-clamp-2">{String(opt.value || '—')}</p>
-                    <div className="flex flex-wrap gap-1 pt-2">
-                      {opt.agents?.map(a => <span key={a} className="text-[8px] font-black bg-muted px-1.5 py-0.5 rounded text-muted-foreground/60 uppercase">{a}</span>)}
-                    </div>
-                  </Card>
-                );
-              })}
-            </div>
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <div className="h-px flex-1 bg-border/40" />
-                <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/40">OR RESOLVE MANUALLY</span>
-                <div className="h-px flex-1 bg-border/40" />
+          <div className="max-h-[calc(90vh-10rem)] overflow-y-auto px-6 py-5 sm:px-8">
+            <div className="space-y-8">
+            {getAiRecommendation(conflictModal.field) ? (
+              <Card className="bg-blue-50 border border-blue-200 rounded-[2rem] shadow-sm">
+                <CardContent className="p-6 space-y-3">
+                  <div className="mb-2 text-xs font-bold text-blue-700">{'\u2728 AI Recommendation'}</div>
+                  <div className="mb-2 text-lg font-semibold text-blue-900">
+                    {String(getAiRecommendation(conflictModal.field)?.recommended_value || '—')}
+                  </div>
+                  <p className="mb-2 max-h-64 overflow-y-auto pr-1 text-sm text-blue-800">
+                    {getAiRecommendation(conflictModal.field)?.reasoning}
+                  </p>
+                  <div className="text-xs text-blue-600">
+                    Confidence: {((getAiRecommendation(conflictModal.field)?.confidence || 0) * 100).toFixed(0)}%
+                  </div>
+                  <Button
+                    onClick={() => submitConflictResolution({
+                      field: conflictModal.field,
+                      chosenValue: getAiRecommendation(conflictModal.field)?.recommended_value,
+                      editReason: 'Resolved conflict based on AI recommendation',
+                      resolutionType: 'ai_accepted',
+                    })}
+                    disabled={isSubmittingConflict}
+                    className="mt-2"
+                  >
+                    {isSubmittingConflict ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Accept Recommendation'}
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                AI recommendation unavailable. Please review options below.
+              </p>
+            )}
+
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold mb-2">Other Options</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {getConflictOptions(conflictModal.field).map((option, index) => {
+                  const aiRecommendedValue = getAiRecommendation(conflictModal.field)?.recommended_value;
+                  const isAiRecommended = aiRecommendedValue != null && option?.value === aiRecommendedValue;
+                  return (
+                    <Card key={`${option?.value || 'option'}-${index}`} className="border border-border/40 rounded-2xl">
+                      <CardContent className="p-5 space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="space-y-1 min-w-0">
+                            <div className="text-base font-medium break-words">{String(option?.value || '—')}</div>
+                            <div className="text-xs text-muted-foreground">
+                              From {option?.source?.doc_type || option?.doc_type || 'Unknown source'}
+                            </div>
+                          </div>
+                          <div className="text-xs font-mono text-muted-foreground shrink-0">
+                            {((option?.confidence || 0) * 100).toFixed(0)}%
+                          </div>
+                        </div>
+                        {isAiRecommended && (
+                          <div className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            AI Recommended
+                          </div>
+                        )}
+                        <Button
+                          variant="outline"
+                          onClick={() => submitConflictResolution({
+                            field: conflictModal.field,
+                            chosenValue: option?.value,
+                            editReason: 'Resolved conflict based on manual selection',
+                            resolutionType: `picked_option_${index + 1}`,
+                          })}
+                          disabled={isSubmittingConflict}
+                          className="w-full"
+                        >
+                          {isSubmittingConflict ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Select This Value'}
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
-              <textarea placeholder="Enter manual resolution value..." className="w-full h-24 rounded-2xl border-2 border-border/40 bg-card p-4 text-sm font-bold focus:border-primary/40 focus:outline-none transition-all resize-none" value={conflictModal.manualValue} onChange={(e) => setConflictModal(prev => ({ ...prev, manualValue: e.target.value, choice: '' }))} />
             </div>
-            <div className="space-y-2">
-              <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 ml-1">Resolution Reason</label>
-              <Input placeholder="Reason for this resolution choice..." value={conflictModal.reason} onChange={(e) => setConflictModal(prev => ({ ...prev, reason: e.target.value }))} className="h-12 rounded-xl border-2 border-border/40 focus:border-primary/40 text-sm font-bold" />
+
+            <div className="space-y-3">
+              <h3 className="mt-4 mb-2 text-sm font-semibold">Or Enter Manually</h3>
+              <Input
+                placeholder="Enter custom value"
+                value={conflictModal.manualValue}
+                onChange={(e) => setConflictModal(prev => ({ ...prev, manualValue: e.target.value }))}
+                className="h-12 rounded-xl border-2 border-border/40 focus:border-primary/40 text-sm font-bold"
+              />
+              <Button
+                onClick={handleResolveConflict}
+                disabled={isSubmittingConflict || !conflictModal.manualValue?.trim()}
+                className="h-11 rounded-xl"
+              >
+                {isSubmittingConflict ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Custom Value'}
+              </Button>
+            </div>
             </div>
           </div>
-          <DialogFooter className="gap-3">
+          <DialogFooter className="gap-3 border-t border-border/20 px-6 py-4 sm:px-8">
             <DialogClose asChild>
               <Button variant="ghost" className="h-14 flex-1 rounded-2xl font-black uppercase tracking-widest text-[11px]">Cancel</Button>
             </DialogClose>
-            <Button onClick={handleResolveConflict} disabled={isSubmittingConflict || (!conflictModal.choice && !conflictModal.manualValue) || !conflictModal.reason} className="h-14 flex-1 rounded-2xl bg-primary text-white font-black uppercase tracking-widest text-[11px] shadow-2xl shadow-primary/20">
-              {isSubmittingConflict ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Resolve Conflict'}
-            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

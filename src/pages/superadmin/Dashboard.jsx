@@ -386,11 +386,22 @@ const SuperAdminDashboard = () => {
             ) : pendingRules.length > 0 ? (
               pendingRules.map((rule) => (
                 <div key={rule.rule_id} className="px-6 py-4 flex items-start gap-4 hover:bg-primary/[0.02] transition-colors group">
-                  <span className="text-[10px] font-black text-muted-foreground/40 w-10 shrink-0 mt-1 transition-colors group-hover:text-primary/40">{rule.rule_id}</span>
-                  <p className="flex-1 text-xs text-foreground/70 leading-relaxed font-medium line-clamp-2">{rule.description}</p>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600">
+                    <GitBranch className="h-4 w-4" />
+                  </div>
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <p className="text-sm font-black tracking-tight text-foreground truncate">
+                      {rule.rule_name ? rule.rule_name.replace(/_/g, ' ') : 'Unnamed Rule'}
+                    </p>
+                    <p className="text-xs text-foreground/60 font-medium line-clamp-2 leading-relaxed">
+                      {rule.rule || rule.description || 'No description available'}
+                    </p>
+                    <span className="inline-block text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border/40">
+                      {rule.category ? rule.category.replace(/_/g, ' ') : 'uncategorized'}
+                    </span>
+                  </div>
+                  <div className="shrink-0">
                     <StatusBadge status={rule.status} />
-                    <SeverityBadge severity={rule.on_fail?.verdict} />
                   </div>
                 </div>
               ))

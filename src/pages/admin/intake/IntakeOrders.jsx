@@ -5,7 +5,6 @@ import {
   ClipboardList,
   Search,
   Plus,
-  ArrowRight,
   Loader2,
   AlertCircle,
   RefreshCw,
@@ -13,6 +12,8 @@ import {
   UserX,
   Users,
   Trash2,
+  Eye,
+  Info,
 } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
@@ -33,8 +34,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../../components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '../../../components/ui/dialog';
 
-import { deleteOrder, listOrders, submitCSRDecision } from '../../../services/intakeApi';
+import { deleteOrder, getOrderFields, listOrders, submitCSRDecision } from '../../../services/intakeApi';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -64,18 +71,31 @@ const deriveDisplayStatus = (order) => {
 
   if (decisionType === 'mixed_patient_docs') return { key: 'mixed_patient', label: 'Mixed Patients', color: 'red' };
   if (decisionType === 'doc_type_mismatch') return { key: 'doc_type_issue', label: 'Doc Type Mismatch', color: 'amber' };
+  if (decisionType === 'duplicate_files') return { key: 'duplicate_files', label: 'Duplicate Files', color: 'violet' };
   if (isMergeDecisionOrder(order))  return { key: 'merge_decision',      label: 'Merge Decision',     color: 'violet' };
   if (order.identity_mismatch)        return { key: 'identity_mismatch',  label: 'Identity Mismatch',  color: 'red'    };
   if (order.identity_incomplete)      return { key: 'identity_incomplete', label: 'ID Incomplete',      color: 'amber'  };
   if (order.identity_review_required) return { key: 'identity_review',     label: 'Identity Review',    color: 'orange' };
   if (order.awaiting_csr)             return { key: 'awaiting_csr',        label: 'Action Required',    color: 'orange' };
 
+  // For extracted orders, check completeness before showing "Ready for Review"
+  if (s === 'extracted') {
+    const missingDocs = order.missing_documents || [];
+    const completeness = order.completeness_score;
+    
+    // If missing required documents OR completeness < 90%, show INCOMPLETE
+    if (missingDocs.length > 0 || (completeness != null && completeness < 90)) {
+      return { key: 'incomplete', label: 'Incomplete', color: 'red' };
+    }
+    // Otherwise ready for review
+    return { key: 'extracted', label: 'Ready for Review', color: 'amber' };
+  }
+
   const PIPELINE = {
     pending:              { key: 'processing',  label: 'Processing',       color: 'blue'    },
     classifying:          { key: 'processing',  label: 'Processing',       color: 'blue'    },
     extracting:           { key: 'processing',  label: 'Processing',       color: 'blue'    },
     reconciling:          { key: 'processing',  label: 'Processing',       color: 'blue'    },
-    extracted:            { key: 'extracted',   label: 'Ready for Review', color: 'amber'   },
     awaiting_csr_decision:{ key: 'awaiting_csr',label: 'Action Required',  color: 'orange'  },
     complete:             { key: 'complete',    label: 'Complete',         color: 'emerald' },
     failed:               { key: 'failed',      label: 'Failed',           color: 'red'     },
@@ -98,7 +118,7 @@ const StatusBadge = ({ order }) => {
   const isPulse = key === 'processing';
 
   return (
-    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${badge}`}>
+    <div className={`inline-flex max-w-full items-center gap-1.5 px-2.5 py-1 text-center rounded-full text-[9px] font-black uppercase tracking-[0.18em] leading-tight border whitespace-normal break-words ${badge}`}>
       <span className={`w-1 h-1 rounded-full ${dot} ${isPulse ? 'animate-pulse' : ''}`} />
       {label}
     </div>
@@ -158,28 +178,17 @@ const formatDate = (value, fallback = 'Date pending') => {
 };
 
 const FILTER_OPTIONS = [
-  { value: 'all',            label: 'All Statuses' },
-  { value: 'pending',        label: 'Pending' },
-  { value: 'extracting',     label: 'Extracting' },
-  { value: 'needs_review',   label: 'Needs Review' },
-  { value: 'action_required', label: 'Action Required' },
-  { value: 'complete',       label: 'Complete' },
-  { value: 'failed',         label: 'Failed' },
+  { value: 'all', label: 'All Orders' },
+  { value: 'processing', label: 'Processing' },
+  { value: 'incomplete', label: 'Incomplete' },
+  { value: 'extracted', label: 'Ready for Review' },
+  { value: 'awaiting_csr', label: 'Action Required' },
+  { value: 'duplicate_files', label: 'Duplicate Files' },
+  { value: 'complete', label: 'Complete' },
+  { value: 'failed', label: 'Failed' },
 ];
 
 // Maps UI filter value → API params
-const filterToParams = (filter) => {
-  switch (filter) {
-    case 'pending':      return { status: 'pending' };
-    case 'extracting':   return { status: 'extracting' };
-    case 'needs_review': return { status: 'extracted' };
-    case 'action_required': return { status: 'awaiting_csr_decision' };
-    case 'complete':     return { status: 'complete' };
-    case 'failed':       return { status: 'failed' };
-    default:             return {};
-  }
-};
-
 // When API filter is 'awaiting_csr_decision' the response may include orders
 // with identity_review_required / awaiting_csr flags but different status strings.
 // Client-side, keep them all visible since the API filter already scoped them.
@@ -203,6 +212,12 @@ const orderSortWeight = (order) => {
   return 4;
 };
 
+const getSummaryCounts = (order) => ({
+  red: order?.summary?.red ?? order?.field_breakdown?.red?.total ?? 0,
+  yellow: order?.summary?.yellow ?? order?.field_breakdown?.yellow?.total ?? 0,
+  green: order?.summary?.green ?? order?.field_breakdown?.green?.total ?? 0,
+});
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const IntakeOrders = () => {
@@ -212,11 +227,13 @@ const IntakeOrders = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [deletingIds, setDeletingIds] = useState(new Set());
+  const [orderSummaries, setOrderSummaries] = useState({});
+  const [summaryDialogOrder, setSummaryDialogOrder] = useState(null);
+  const activeFilterLabel = FILTER_OPTIONS.find((option) => option.value === statusFilter)?.label || 'All Orders';
 
-  const fetchOrders = useCallback(async (filter = 'all') => {
+  const fetchOrders = useCallback(async () => {
     try {
-      const params = filterToParams(filter);
-      const data = await listOrders(params);
+      const data = await listOrders();
       setOrders(data.orders || []);
     } catch (error) {
       console.error('Failed to load orders:', error);
@@ -228,16 +245,16 @@ const IntakeOrders = () => {
 
   useEffect(() => {
     setIsLoading(true);
-    fetchOrders(statusFilter);
-    const interval = setInterval(() => fetchOrders(statusFilter), 15000);
+    fetchOrders();
+    const interval = setInterval(() => fetchOrders(), 15000);
     return () => clearInterval(interval);
-  }, [fetchOrders, statusFilter]);
+  }, [fetchOrders]);
 
   const handleRetry = async (orderId) => {
     try {
       await submitCSRDecision(orderId, { decision: 'retry_failed' });
       toast.success('Order requeued');
-      fetchOrders(statusFilter);
+      fetchOrders();
     } catch (error) {
       toast.error(error.message);
     }
@@ -263,21 +280,63 @@ const IntakeOrders = () => {
   };
 
   const filteredOrders = useMemo(() => {
-    const q = search.toLowerCase();
-    const visible = search.trim()
-      ? orders.filter(o =>
-          (o.patient_name || '').toLowerCase().includes(q)
-        )
-      : orders;
-    return [...visible].sort((a, b) => {
+    let result = orders;
+
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter((order) =>
+        (order.patient_name || '').toLowerCase().includes(q)
+      );
+    }
+
+    if (statusFilter !== 'all') {
+      result = result.filter((order) => deriveDisplayStatus(order).key === statusFilter);
+    }
+
+    return [...result].sort((a, b) => {
       const byWeight = orderSortWeight(a) - orderSortWeight(b);
       if (byWeight !== 0) return byWeight;
       return new Date(b.created_at || 0) - new Date(a.created_at || 0);
     });
-  }, [orders, search]);
+  }, [orders, search, statusFilter]);
 
   // Counts for header summary
   const csrCount = useMemo(() => orders.filter(needsReviewAction).length, [orders]);
+
+  useEffect(() => {
+    const ordersNeedingSummary = filteredOrders.filter(
+      (order) => !orderSummaries[order.order_id] && order.summary_text != null
+    );
+
+    if (!ordersNeedingSummary.length) return;
+
+    let cancelled = false;
+
+    Promise.all(
+      ordersNeedingSummary.map(async (order) => {
+        try {
+          const data = await getOrderFields(order.order_id);
+          return [order.order_id, data?.summary || null];
+        } catch (error) {
+          console.error(`Failed to load summary for order ${order.order_id}:`, error);
+          return [order.order_id, null];
+        }
+      })
+    ).then((results) => {
+      if (cancelled) return;
+      setOrderSummaries((prev) => {
+        const next = { ...prev };
+        results.forEach(([orderId, summary]) => {
+          next[orderId] = summary;
+        });
+        return next;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [filteredOrders, orderSummaries]);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
@@ -291,45 +350,52 @@ const IntakeOrders = () => {
           <h1 className="text-2xl font-black tracking-tight">Orders</h1>
           <p className="text-muted-foreground text-sm">Monitor and manage all clinical intake extractions</p>
         </div>
-        <div className="flex items-center gap-3">
-          {csrCount > 0 && (
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-600">
-              <AlertCircle className="w-3.5 h-3.5" />
-              <span className="text-[10px] font-black uppercase tracking-widest">{csrCount} Need{csrCount > 1 ? '' : 's'} Action</span>
-            </div>
-          )}
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[160px] h-10 rounded-xl bg-card border-border/50 text-xs font-bold">
-              <SelectValue placeholder="Filter Status" />
-            </SelectTrigger>
-            <SelectContent className="rounded-xl">
-              {FILTER_OPTIONS.map(o => (
-                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            onClick={() => navigate('/admin/intake/new')}
-            className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 h-10 px-5 rounded-xl font-bold text-sm group"
-          >
-            <Plus className="w-4 h-4 mr-2 transition-transform group-hover:rotate-90" />
-            New Order
-          </Button>
-        </div>
+        {csrCount > 0 && (
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-600 w-fit">
+            <AlertCircle className="w-3.5 h-3.5" />
+            <span className="text-[10px] font-black uppercase tracking-widest">{csrCount} Need{csrCount > 1 ? '' : 's'} Action</span>
+          </div>
+        )}
       </div>
 
       {/* Search */}
       <Card className="border-0 shadow-lg shadow-black/5 dark:shadow-white/5 rounded-2xl bg-card/50 backdrop-blur-sm border-white/20 dark:border-white/5 overflow-hidden">
         <CardContent className="p-4">
-          <div className="relative group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
-            <Input
-              placeholder="Search by patient name..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-11 h-12 bg-background/50 border-border/50 focus:border-primary/50 focus:ring-primary/20 rounded-xl text-base transition-all"
-            />
+          <div className="flex flex-col lg:flex-row gap-3">
+            <div className="relative group flex-1">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+              <Input
+                placeholder="Search by patient name..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-11 h-12 bg-background/50 border-border/50 focus:border-primary/50 focus:ring-primary/20 rounded-xl text-base transition-all"
+              />
+            </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-full lg:w-48 h-12 rounded-xl border-2 border-border/40 bg-background/50 text-xs font-bold">
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent className="rounded-xl">
+                {FILTER_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              onClick={() => navigate('/admin/intake/new')}
+              className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 h-12 px-5 rounded-xl font-bold text-sm group"
+            >
+              <Plus className="w-4 h-4 mr-2 transition-transform group-hover:rotate-90" />
+              New Order
+            </Button>
           </div>
+          {statusFilter !== 'all' && (
+            <div className="mt-3">
+              <span className="inline-flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-primary">
+                Filtering: {activeFilterLabel}
+              </span>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -358,15 +424,16 @@ const IntakeOrders = () => {
             </div>
           ) : filteredOrders.length > 0 ? (
             <div className="overflow-x-auto">
-              <Table>
+              <Table className="table-fixed min-w-full">
                 <TableHeader>
                   <TableRow className="hover:bg-transparent border-border/50">
-                    <TableHead className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Patient</TableHead>
-                    <TableHead className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Disease</TableHead>
-                    <TableHead className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Status</TableHead>
-                    <TableHead className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">RYG</TableHead>
-                    <TableHead className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Created</TableHead>
-                    <TableHead className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground text-right">Actions</TableHead>
+                    <TableHead className="w-[19%] px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Patient</TableHead>
+                    <TableHead className="w-[13%] px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Disease</TableHead>
+                    <TableHead className="w-[18%] px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Status</TableHead>
+                    <TableHead className="w-[7%] px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">RYG</TableHead>
+                    <TableHead className="w-[23%] px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Summary</TableHead>
+                    <TableHead className="w-[10%] px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Created</TableHead>
+                    <TableHead className="w-[10%] px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -376,6 +443,7 @@ const IntakeOrders = () => {
                     const mergeDecision = displayStatus.key === 'merge_decision';
                     const canDeleteOrder = order.status !== 'complete';
                     const isDeleting = deletingIds.has(order.order_id);
+                    const summaryCounts = orderSummaries[order.order_id] || getSummaryCounts(order);
                     return (
                       <TableRow
                         key={order.order_id}
@@ -413,6 +481,51 @@ const IntakeOrders = () => {
                         <TableCell className="px-6 py-5">
                           <RYGBadge verdict={order.ryg_verdict} />
                         </TableCell>
+                        <TableCell className="px-6 py-5">
+                          <div className="relative w-full max-w-[240px]">
+                            {order.summary_text == null ? (
+                              <p className="text-xs italic text-muted-foreground/50">Processing...</p>
+                            ) : (
+                              <div className="rounded-xl border border-border/40 bg-muted/[0.03] p-3">
+                                <div className="mb-2 flex items-center justify-between gap-2">
+                                  <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60">
+                                    Summary
+                                  </span>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    title="View summary"
+                                    onClick={() => setSummaryDialogOrder(order)}
+                                    className="h-6 w-6 shrink-0 rounded-full border border-primary/20 bg-white text-primary shadow-sm hover:bg-primary hover:text-white"
+                                  >
+                                    <Info className="w-3.5 h-3.5" />
+                                  </Button>
+                                </div>
+                                <div className="min-w-0 space-y-2">
+                                  <div className="inline-flex flex-wrap items-center gap-2">
+                                    <span className="inline-flex rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-mono text-emerald-700">
+                                      G: {summaryCounts.green}
+                                    </span>
+                                    <span className="inline-flex rounded bg-amber-50 px-2 py-0.5 text-[10px] font-mono text-amber-700">
+                                      Y: {summaryCounts.yellow}
+                                    </span>
+                                    <span className="inline-flex rounded bg-red-50 px-2 py-0.5 text-[10px] font-mono text-red-700">
+                                      R: {summaryCounts.red}
+                                    </span>
+                                  </div>
+                                  {order.missing_documents?.length > 0 && (
+                                    <div>
+                                      <span className="block max-w-full truncate rounded bg-red-50 px-2 py-0.5 text-[10px] text-red-600">
+                                        Missing: {order.missing_documents.join(', ')}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell className="px-6 py-5 text-[11px] font-bold text-muted-foreground">
                           {formatDate(order.created_at)}
                         </TableCell>
@@ -429,23 +542,35 @@ const IntakeOrders = () => {
                                 Retry
                               </Button>
                             )}
+                            {displayStatus.key === 'duplicate_files' && (
+                              <Button
+                                asChild
+                                size="sm"
+                                className="h-8 rounded-lg bg-orange-500 px-3 text-xs font-bold text-white shadow-md shadow-orange-500/20 hover:bg-orange-500/90"
+                              >
+                                <Link to={`/admin/intake/orders/${order.order_id}`}>
+                                  Review Duplicates
+                                </Link>
+                              </Button>
+                            )}
                             {canDeleteOrder && (
                               <Button
                                 variant="outline"
-                                size="sm"
-                                className="h-8 rounded-lg px-3 text-xs border-red-500/20 text-red-600 hover:bg-red-500/5 font-bold"
+                                size="icon"
+                                title="Delete order"
+                                className="h-9 w-9 rounded-lg border-red-500/20 text-red-600 hover:bg-red-500/5"
                                 onClick={() => handleDeleteOrder(order.order_id)}
                                 disabled={isDeleting}
                               >
-                                {isDeleting ? <Loader2 className="w-3 h-3 mr-1.5 animate-spin" /> : <Trash2 className="w-3 h-3 mr-1.5" />}
-                                Delete
+                                {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                               </Button>
                             )}
                             <Button
                               asChild
                               variant={reviewNeeded ? 'default' : 'ghost'}
-                              size="sm"
-                              className={`rounded-lg h-8 px-3 text-xs font-bold ${
+                              size="icon"
+                              title={reviewNeeded ? 'Review order' : 'View order'}
+                              className={`h-9 w-9 rounded-lg ${
                                 reviewNeeded
                                   ? mergeDecision
                                     ? 'bg-violet-600 text-white hover:bg-violet-700 shadow-md shadow-violet-500/20'
@@ -456,7 +581,7 @@ const IntakeOrders = () => {
                               }`}
                             >
                               <Link to={`/admin/intake/orders/${order.order_id}`}>
-                                {reviewNeeded ? 'Review' : 'View'}
+                                <Eye className="w-4 h-4" />
                               </Link>
                             </Button>
                           </div>
@@ -476,7 +601,11 @@ const IntakeOrders = () => {
                   </div>
                   <div className="space-y-2">
                     <h3 className="text-xl font-black tracking-tight">
-                      {search || statusFilter !== 'all' ? 'No orders match your filters' : 'No orders yet'}
+                      {statusFilter !== 'all'
+                        ? `No orders found with status: ${activeFilterLabel}`
+                        : search
+                          ? 'No orders match your filters'
+                          : 'No orders yet'}
                     </h3>
                     <p className="text-sm text-muted-foreground font-medium leading-relaxed">
                       {search || statusFilter !== 'all'
@@ -499,6 +628,36 @@ const IntakeOrders = () => {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={Boolean(summaryDialogOrder)} onOpenChange={(open) => !open && setSummaryDialogOrder(null)}>
+        <DialogContent className="sm:max-w-xl rounded-3xl">
+          <DialogHeader>
+            <DialogTitle className="text-left text-lg font-black tracking-tight">
+              Summary{summaryDialogOrder?.patient_name ? ` for ${summaryDialogOrder.patient_name}` : ''}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {summaryDialogOrder && (
+              <div className="inline-flex flex-wrap items-center gap-2">
+                <span className="inline-flex rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-mono text-emerald-700">
+                  G: {(orderSummaries[summaryDialogOrder.order_id] || getSummaryCounts(summaryDialogOrder)).green}
+                </span>
+                <span className="inline-flex rounded bg-amber-50 px-2 py-0.5 text-[10px] font-mono text-amber-700">
+                  Y: {(orderSummaries[summaryDialogOrder.order_id] || getSummaryCounts(summaryDialogOrder)).yellow}
+                </span>
+                <span className="inline-flex rounded bg-red-50 px-2 py-0.5 text-[10px] font-mono text-red-700">
+                  R: {(orderSummaries[summaryDialogOrder.order_id] || getSummaryCounts(summaryDialogOrder)).red}
+                </span>
+              </div>
+            )}
+            <div className="max-h-[60vh] overflow-y-auto rounded-2xl border border-border/40 bg-muted/[0.03] p-4">
+              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">
+                {summaryDialogOrder?.summary_text || 'Summary unavailable.'}
+              </p>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

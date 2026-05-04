@@ -1,8 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Layers, Search, Filter, ChevronRight, FileText, Hash, Copy, Eye, Activity, CheckCircle2, RefreshCw, Loader2, X, AlertCircle } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
-import { Input } from '../../components/ui/input';
+import { Layers, FileText, Hash, Eye, Activity, RefreshCw, Loader2, X, AlertCircle } from 'lucide-react';
+import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../components/ui/select';
 import { useSelector } from 'react-redux';
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
@@ -10,56 +16,27 @@ const BASE_URL = 'https://kenqo-api-409744260053.asia-south1.run.app';
 const DISEASE = 'lymphedema';
 
 /* ─── CHUNK DETAILS DIALOG ─── */
-const ChunkDetailsDialog = ({ open, chunkId, onCancel, userId }) => {
-  const [chunk, setChunk] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+const normalizeChunks = (data) => {
+  const raw = Array.isArray(data)
+    ? data
+    : Array.isArray(data?.chunks)
+      ? data.chunks
+      : Array.isArray(data?.items)
+        ? data.items
+        : [];
+
+  return raw.map((chunk, fallbackIndex) => ({
+    ...chunk,
+    chunk_id: chunk.chunk_id || chunk.id || `${chunk.document_id || 'document'}-${chunk.index ?? chunk.chunk_index ?? fallbackIndex}`,
+    chunk_index: chunk.chunk_index ?? chunk.index ?? fallbackIndex,
+    source_doc: chunk.filename || chunk.source_doc || chunk.source_document || chunk.document_id || '',
+  }));
+};
+
+const getDocumentName = (chunk) => chunk?.filename || chunk?.source_doc || chunk?.source_document || '';
+
+const ChunkDetailsDialog = ({ open, chunk, onCancel }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [linkedRules, setLinkedRules] = useState([]);
-  const [loadingRules, setLoadingRules] = useState(false);
-
-  useEffect(() => {
-    const fetchDetail = async () => {
-      if (!open || !chunkId || !userId) return;
-      setLoading(true);
-      setError('');
-      setIsExpanded(false);
-      try {
-        const res = await fetch(`${BASE_URL}/admin/rules/${DISEASE}/chunks/${chunkId}`, {
-          headers: { 'x-user-id': userId }
-        });
-        const data = await res.json();
-        if (!res.ok || !data.success) throw new Error(data.message || 'Failed to load chunk details');
-        setChunk(data.chunk);
-
-        // Fetch linked rules names
-        if (data.chunk?.rule_ids?.length > 0) {
-          setLoadingRules(true);
-          try {
-            const rules = await Promise.all(
-              data.chunk.rule_ids.map(async (id) => {
-                const ruleRes = await fetch(`${BASE_URL}/admin/rules/${DISEASE}/${id}`, {
-                  headers: { 'x-user-id': userId }
-                });
-                const ruleData = await ruleRes.json();
-                return ruleData.success ? ruleData.rule : { rule_id: id, rule_name: 'Unknown Rule' };
-              })
-            );
-            setLinkedRules(rules);
-          } catch (e) {
-            console.error('Failed to fetch rules:', e);
-          } finally {
-            setLoadingRules(false);
-          }
-        }
-      } catch (e) {
-        setError(e.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchDetail();
-  }, [open, chunkId, userId]);
 
   if (!open) return null;
 
@@ -70,7 +47,7 @@ const ChunkDetailsDialog = ({ open, chunkId, onCancel, userId }) => {
           <div className="space-y-1">
             <h2 className="text-2xl font-black tracking-tight">Chunk Details</h2>
             <p className="text-[10px] font-black uppercase tracking-widest text-primary bg-primary/10 px-3 py-1 rounded-xl border border-primary/20 inline-block">
-              {chunkId}
+              {getDocumentName(chunk) || 'Document Chunk'}
             </p>
           </div>
           <button onClick={onCancel} className="w-10 h-10 rounded-xl border border-border/60 flex items-center justify-center hover:bg-muted transition-all">
@@ -78,30 +55,16 @@ const ChunkDetailsDialog = ({ open, chunkId, onCancel, userId }) => {
           </button>
         </div>
 
-        {loading ? (
-          <div className="py-20 flex flex-col items-center gap-4 animate-pulse">
-            <Loader2 className="w-10 h-10 text-primary animate-spin" />
-            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Fetching Deep Intelligence...</p>
-          </div>
-        ) : error ? (
-          <div className="py-20 flex flex-col items-center gap-4 text-red-500">
-            <AlertCircle className="w-10 h-10" />
-            <p className="font-bold">{error}</p>
-          </div>
-        ) : chunk ? (
+        {chunk ? (
           <div className="space-y-8">
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="p-4 rounded-2xl bg-muted/30 border border-border/40">
-                <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-1">Source Document</p>
-                <p className="text-xs font-bold truncate">{chunk.source_doc}</p>
-              </div>
-              <div className="p-4 rounded-2xl bg-muted/30 border border-border/40">
-                <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-1">Position</p>
-                <p className="text-xs font-bold">Index {chunk.chunk_index} of {chunk.total_chunks}</p>
+                <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-1">Filename</p>
+                <p className="text-xs font-bold truncate" title={getDocumentName(chunk)}>{getDocumentName(chunk) || '-'}</p>
               </div>
               <div className="p-4 rounded-2xl bg-muted/30 border border-border/40">
                 <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-1">Ingested At</p>
-                <p className="text-xs font-bold">{new Date(chunk.ingested_at).toLocaleDateString()}</p>
+                <p className="text-xs font-bold">{chunk.ingested_at || chunk.created_at ? new Date(chunk.ingested_at || chunk.created_at).toLocaleDateString() : '-'}</p>
               </div>
             </div>
 
@@ -138,19 +101,12 @@ const ChunkDetailsDialog = ({ open, chunkId, onCancel, userId }) => {
               <div className="space-y-3">
                 <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Linked Rules</p>
                 <div className="space-y-2 h-[200px] overflow-y-scroll">
-                  {loadingRules ? (
-                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground animate-pulse">
-                      <Loader2 className="w-3 h-3 animate-spin" /> Fetching Rule Details...
-                    </div>
-                  ) : linkedRules.length > 0 ? (
-                    linkedRules.map(rule => (
-                      <div key={rule.rule_id} className="p-3 rounded-xl bg-primary/5 border border-primary/10 space-y-1">
+                  {(chunk.rule_ids || chunk.linked_rule_ids)?.length > 0 ? (
+                    (chunk.rule_ids || chunk.linked_rule_ids).map(ruleId => (
+                      <div key={ruleId} className="p-3 rounded-xl bg-primary/5 border border-primary/10 space-y-1">
                         <span className="text-[8px] font-black text-primary/60 bg-primary/5 px-1.5 py-0.5 rounded border border-primary/10">
-                          {rule.rule_id}
+                          {ruleId}
                         </span>
-                        <p className="text-[11px] font-bold text-foreground/80 leading-tight">
-                          {rule.rule_name?.replace(/_/g, ' ') || 'Untitled Rule'}
-                        </p>
                       </div>
                     ))
                   ) : (
@@ -160,9 +116,9 @@ const ChunkDetailsDialog = ({ open, chunkId, onCancel, userId }) => {
               </div>
 
               <div className="space-y-3">
-                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Applicable HCPCS</p>
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Applicable HCPCS</p>
                 <div className="flex flex-wrap gap-2">
-                  {chunk.applicable_hcpcs?.map(code => (
+                  {(chunk.applicable_hcpcs || chunk.matched_hcpcs)?.map(code => (
                     <span key={code} className="px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 text-[10px] font-black uppercase tracking-widest">
                       {code}
                     </span>
@@ -204,8 +160,8 @@ const SuperAdminChunks = () => {
   const [chunks, setChunks]       = useState([]);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState('');
-  const [search, setSearch]       = useState('');
-  const [selectedChunkId, setSelectedChunkId] = useState(null);
+  const [selectedDocument, setSelectedDocument] = useState('all');
+  const [selectedChunk, setSelectedChunk] = useState(null);
 
   const fetchChunks = useCallback(async () => {
     if (!userId) return;
@@ -215,8 +171,8 @@ const SuperAdminChunks = () => {
         headers: { 'x-user-id': userId }
       });
       const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.message || 'Failed to load chunks');
-      setChunks(data.chunks || []);
+      if (!res.ok || data.success === false) throw new Error(data.message || 'Failed to load chunks');
+      setChunks(normalizeChunks(data));
       setError('');
     } catch (e) {
       setError(e.message);
@@ -229,19 +185,18 @@ const SuperAdminChunks = () => {
     fetchChunks();
   }, [fetchChunks]);
 
-  const filtered = chunks.filter(c =>
-    (c.chunk_id || '').toLowerCase().includes(search.toLowerCase()) ||
-    (c.text || '').toLowerCase().includes(search.toLowerCase()) ||
-    (c.source_doc || '').toLowerCase().includes(search.toLowerCase())
-  );
+  const documentNames = [...new Set(chunks.map(getDocumentName).filter(Boolean))];
+  const filtered = selectedDocument === 'all'
+    ? chunks
+    : chunks.filter((chunk) => getDocumentName(chunk) === selectedDocument);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 pb-12">
       <ChunkDetailsDialog
-        open={!!selectedChunkId}
-        chunkId={selectedChunkId}
-        userId={userId}
-        onCancel={() => setSelectedChunkId(null)}
+        key={selectedChunk?.chunk_id || selectedChunk?.id || 'chunk-detail'}
+        open={!!selectedChunk}
+        chunk={selectedChunk}
+        onCancel={() => setSelectedChunk(null)}
       />
       {/* ── Header ── */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -274,7 +229,7 @@ const SuperAdminChunks = () => {
         {[
           { label: 'Active Chunks',  value: chunks.length, icon: Layers, color: 'text-foreground', bg: 'bg-foreground/5' },
           { label: 'Avg Token Size',  value: chunks.length ? Math.round(chunks.reduce((acc, c) => acc + (c.text?.split(' ').length || 0), 0) / chunks.length) : 0, icon: Hash,   color: 'text-primary',    bg: 'bg-primary/10' },
-          { label: 'Source Docs',     value: [...new Set(chunks.map(c => c.source_doc))].length, icon: FileText, color: 'text-violet-500', bg: 'bg-violet-500/10' },
+          { label: 'Source Docs',     value: documentNames.length, icon: FileText, color: 'text-violet-500', bg: 'bg-violet-500/10' },
           { label: 'System Health',   value: 'Optimal', icon: Activity, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
         ].map((s) => (
           <Card key={s.label} className="border-2 border-border/40 rounded-[2rem] shadow-sm hover:shadow-md transition-all overflow-hidden relative group">
@@ -289,15 +244,29 @@ const SuperAdminChunks = () => {
         ))}
       </div>
 
+      {error && (
+        <div className="flex items-center gap-3 bg-red-500/10 text-red-600 border border-red-500/20 px-5 py-4 rounded-2xl text-sm font-bold">
+          <AlertCircle className="w-5 h-5 shrink-0" />
+          {error}
+        </div>
+      )}
+
       {/* ── Search ── */}
-      <div className="relative group max-w-2xl">
-        <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground group-focus-within:text-primary transition-all duration-300" />
-        <Input
-          placeholder="Search chunks by content, ID, or document reference..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-14 h-14 bg-card border-2 border-border/40 focus:border-primary/40 rounded-[1.25rem] transition-all shadow-sm focus:shadow-md text-sm font-medium placeholder:text-muted-foreground/40"
-        />
+      <div className="max-w-2xl space-y-2">
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Filter by document name</p>
+        <Select value={selectedDocument} onValueChange={setSelectedDocument}>
+          <SelectTrigger className="h-14 bg-card border-2 border-border/40 focus:border-primary/40 rounded-[1.25rem] transition-all shadow-sm focus:shadow-md text-sm font-black">
+            <SelectValue placeholder="All documents" />
+          </SelectTrigger>
+          <SelectContent className="rounded-2xl border-border/40">
+            <SelectItem value="all" className="rounded-xl font-bold">All documents</SelectItem>
+            {documentNames.map((name) => (
+              <SelectItem key={name} value={name} className="rounded-xl font-bold">
+                {name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* ── Chunks List ── */}
@@ -314,7 +283,7 @@ const SuperAdminChunks = () => {
             </div>
             <div className="space-y-1">
               <p className="font-black text-lg">No Fragments Found</p>
-              <p className="text-sm font-medium">Try adjusting your search terms.</p>
+              <p className="text-sm font-medium">Try choosing a different document.</p>
             </div>
           </div>
         ) : (
@@ -322,15 +291,13 @@ const SuperAdminChunks = () => {
             <div key={chunk.chunk_id} className="group bg-card border-2 border-border/40 rounded-[2rem] p-6 hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 shadow-sm">
               <div className="flex items-start justify-between gap-6 mb-5">
                 <div className="flex items-center gap-3 flex-wrap">
-                  <span className="text-[10px] font-black text-primary bg-primary/10 px-3 py-1.5 rounded-xl border border-primary/20 shadow-sm tracking-widest uppercase">{chunk.chunk_id}</span>
-                  <span className="text-[10px] font-black text-muted-foreground/60 bg-muted/50 px-3 py-1.5 rounded-xl border border-border/40 tracking-widest uppercase truncate max-w-[200px]">{chunk.source_doc}</span>
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-muted/30 border border-border/40 text-[10px] font-black uppercase tracking-widest text-muted-foreground/40">
-                    Index {chunk.chunk_index} / {chunk.total_chunks}
-                  </div>
+                  <span className="text-[10px] font-black text-primary bg-primary/10 px-3 py-1.5 rounded-xl border border-primary/20 shadow-sm tracking-widest uppercase truncate max-w-[720px]" title={getDocumentName(chunk)}>
+                    {getDocumentName(chunk) || '-'}
+                  </span>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <button
-                    onClick={() => setSelectedChunkId(chunk.chunk_id)}
+                    onClick={() => setSelectedChunk(chunk)}
                     className="w-10 h-10 flex items-center justify-center rounded-xl bg-muted/50 hover:bg-primary/10 transition-all text-muted-foreground hover:text-primary border border-border/40 hover:border-primary/20 active:scale-95 group/view"
                   >
                     <Eye className="w-5 h-5 group-hover/view:scale-110 transition-transform" />

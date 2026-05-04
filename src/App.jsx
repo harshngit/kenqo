@@ -127,7 +127,7 @@ function App() {
             </Route>
 
             {/* Admin Routes */}
-            <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminLayout /></ProtectedRoute>}>
+            <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin', 'superadmin']}><AdminLayout /></ProtectedRoute>}>
               <Route index element={<AdminDashboard />} />
               <Route path="documents" element={<AdminDocuments />} />
               <Route path="intake" element={<IntakeOrders />} />

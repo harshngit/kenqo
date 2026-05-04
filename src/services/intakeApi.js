@@ -1,10 +1,27 @@
 const BASE_URL = 'https://kenqo-api-409744260053.asia-south1.run.app';
 
+const getAuthToken = () =>
+  localStorage.getItem('kenqo_token') ||
+  localStorage.getItem('access_token') ||
+  localStorage.getItem('token') ||
+  '';
+
+const redirectToLogin = () => {
+  localStorage.removeItem('kenqo_token');
+  localStorage.removeItem('access_token');
+  localStorage.removeItem('token');
+  localStorage.removeItem('kenqo_user');
+  window.location.href = '/login';
+};
+
 const getHeaders = (isFormData = false) => {
-  const token = localStorage.getItem('kenqo_token');
-  const headers = {
-    'Authorization': `Bearer ${token}`
-  };
+  const token = getAuthToken();
+  const headers = {};
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
   if (!isFormData) {
     headers['Content-Type'] = 'application/json';
   }
@@ -12,9 +29,15 @@ const getHeaders = (isFormData = false) => {
 };
 
 const handleResponse = async (response) => {
-  const data = await response.json();
+  const data = await response.json().catch(() => ({}));
+
+  if (response.status === 401 || response.status === 403) {
+    redirectToLogin();
+    throw new Error(data.detail || data.message || 'Your session has expired. Please sign in again.');
+  }
+
   if (!response.ok) {
-    throw new Error(data.detail || 'Request failed');
+    throw new Error(data.detail || data.message || 'Request failed');
   }
   return data;
 };
@@ -87,6 +110,18 @@ export const addOrderDocuments = async (orderId, formData) => {
   return handleResponse(response);
 };
 
+export const replaceDocument = async (orderId, docId, file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await fetch(`${BASE_URL}/intake/orders/${orderId}/documents/${docId}/replace`, {
+    method: 'POST',
+    headers: getHeaders(true),
+    body: formData
+  });
+  return handleResponse(response);
+};
+
 export const approveOrder = async (orderId, { overrideMissing = false } = {}) => {
   const query = overrideMissing ? '?override_missing=true' : '';
   const response = await fetch(`${BASE_URL}/intake/orders/${orderId}/approve${query}`, {
@@ -94,6 +129,10 @@ export const approveOrder = async (orderId, { overrideMissing = false } = {}) =>
     headers: getHeaders()
   });
   const data = await response.json().catch(() => ({}));
+  if (response.status === 401 || response.status === 403) {
+    redirectToLogin();
+    throw new Error(data.detail || data.message || 'Your session has expired. Please sign in again.');
+  }
   if (!response.ok) {
     const error = new Error(data.detail || data.message || 'Approval failed');
     error.status = response.status;
@@ -122,6 +161,15 @@ export const resolveConflict = async (orderId, fieldName, chosenValue, editReaso
       edit_reason: editReason,
       resolution_type: resolutionType
     })
+  });
+  return handleResponse(response);
+};
+
+export const undoAction = async (orderId, body) => {
+  const response = await fetch(`${BASE_URL}/intake/orders/${orderId}/undo`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(body)
   });
   return handleResponse(response);
 };
@@ -211,6 +259,10 @@ export const viewDocument = async (orderId, docId) => {
     method: 'GET',
     headers: getHeaders(),
   });
+  if (response.status === 401 || response.status === 403) {
+    redirectToLogin();
+    throw new Error('Your session has expired. Please sign in again.');
+  }
   if (!response.ok) throw new Error('Failed to fetch document');
   return response.json();
 };

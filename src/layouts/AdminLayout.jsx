@@ -17,6 +17,8 @@ import {
   FilePlus,
   ClipboardList,
   User,
+  Shield,
+  ArrowLeft,
 } from 'lucide-react';
 
 const AdminLayout = () => {
@@ -37,7 +39,18 @@ const AdminLayout = () => {
     navigate('/login');
   };
 
+  const isSuperadmin = user?.role === 'superadmin';
+  const superadminModeLabel = location.pathname.startsWith('/admin/intake')
+    ? 'Superadmin (Intake Mode)'
+    : 'Superadmin (Admin Mode)';
+
   const navSections = [
+    ...(isSuperadmin ? [{
+      label: 'SUPERADMIN',
+      items: [
+        { path: '/superadmin', label: 'Back to Superadmin', icon: ArrowLeft },
+      ],
+    }] : []),
     {
       label: 'OVERVIEW',
       items: [
@@ -93,7 +106,9 @@ const AdminLayout = () => {
             {!isSidebarCollapsed && (
               <div className="animate-in fade-in slide-in-from-left-2 duration-300">
                 <span className="font-bold text-sidebar-foreground tracking-tight text-sm">Kenqo</span>
-                <p className="text-[9px] text-sidebar-foreground/50 font-bold uppercase tracking-widest">Knowledge Base — Superadmin</p>
+                <p className="text-[9px] text-sidebar-foreground/50 font-bold uppercase tracking-widest">
+                  {isSuperadmin ? 'Admin Panel - Superadmin Access' : 'Admin Panel'}
+                </p>
               </div>
             )}
           </div>
@@ -203,7 +218,19 @@ const AdminLayout = () => {
             <div className="w-7 h-7 bg-primary rounded-lg flex items-center justify-center">
               <LayoutDashboard className="w-4 h-4 text-primary-foreground" />
             </div>
-            <span className="font-bold tracking-tight text-sm">Kenqo</span>
+            <div className="flex flex-col">
+              <span className="font-bold tracking-tight text-sm">Kenqo</span>
+              {isSuperadmin && (
+                <button
+                  type="button"
+                  onClick={() => navigate('/superadmin')}
+                  className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-primary"
+                >
+                  <Shield className="w-2.5 h-2.5" />
+                  Superadmin
+                </button>
+              )}
+            </div>
           </div>
           <button
             className="p-2 hover:bg-accent rounded-xl transition-colors"
@@ -215,6 +242,13 @@ const AdminLayout = () => {
 
         {/* Content Area */}
         <div className="p-4 sm:p-6 lg:p-8 w-full transition-all duration-500">
+          {isSuperadmin && (
+            <div className="mb-4">
+              <span className="inline-flex items-center rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-primary">
+                {superadminModeLabel}
+              </span>
+            </div>
+          )}
           <Outlet />
         </div>
       </main>
