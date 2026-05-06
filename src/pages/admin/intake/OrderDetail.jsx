@@ -1,4 +1,4 @@
-﻿import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
 import {
@@ -336,6 +336,32 @@ const getDocumentId = (doc) => doc?.doc_id || doc?.id || doc?.document_id;
 
 const getDocumentFilename = (doc) => doc?.filename || doc?.file_name || doc?.name || 'Document';
 
+const getReplacementDocumentId = (doc) =>
+  doc?.replaced_by_doc_id ||
+  doc?.replaced_by_document_id ||
+  doc?.replacement_doc_id ||
+  doc?.replacement_document_id;
+
+const getReplacementFilename = (doc, allDocs = []) => {
+  const direct =
+    doc?.replaced_by_filename ||
+    doc?.replaced_by_file_name ||
+    doc?.replacement_filename ||
+    doc?.replacement_file_name ||
+    doc?.replacement?.filename ||
+    doc?.replacement?.file_name ||
+    doc?.replaced_by?.filename ||
+    doc?.replaced_by?.file_name;
+
+  if (direct) return direct;
+
+  const replacementId = getReplacementDocumentId(doc);
+  if (!replacementId) return null;
+
+  const replacementDoc = allDocs.find((item) => String(getDocumentId(item)) === String(replacementId));
+  return replacementDoc ? getDocumentFilename(replacementDoc) : null;
+};
+
 const getRawExtractions = (field) => field?.raw_extractions || field?.rawExtractions || {};
 
 const getEditHistory = (field) => {
@@ -472,6 +498,7 @@ const OrderDetail = () => {
 
   // Document accordion & viewer state
   const [openDocs, setOpenDocs] = useState({});
+  const [showPreviousVersions, setShowPreviousVersions] = useState(false);
   const [viewingDoc, setViewingDoc] = useState(null);
   const [viewerDoc, setViewerDoc] = useState(null);
 
@@ -881,11 +908,11 @@ const OrderDetail = () => {
   };
 
   const useHcpcsSuggestion = async (field, suggestion) => {
-    const code = suggestion?.code || suggestion?.hcpcs_code;
-    if (!field?.fieldName || !code) return;
+    const code = getHcpcsSuggestionCode(suggestion);
+    if (!code) return;
 
     try {
-      await editField(orderId, field.fieldName, code, 'Selected from HCPCS suggestions');
+      await editField(orderId, 'hcpcs_code', code, 'Selected from HCPCS suggestions');
       toast.success('HCPCS code selected');
       fetchFields();
     } catch (e) {
@@ -1003,6 +1030,21 @@ const OrderDetail = () => {
     return groups;
   }, [normalizedFieldMap]);
 
+  const csrReviewFields = useMemo(() => (
+    Object.entries(normalizedFieldMap)
+      .map(([fieldName, wrapper]) => ({ fieldName, ...wrapper }))
+      .filter((field) => {
+        const hcpcsSuggestions = getRawExtractions(field).hcpcs_suggestions;
+        return field.needs_csr_review ||
+          (
+            field.fieldName === 'hcpcs_code' &&
+            field.value === null &&
+            Array.isArray(hcpcsSuggestions) &&
+            hcpcsSuggestions.length > 0
+          );
+      })
+  ), [normalizedFieldMap]);
+
   const activeSemanticTabs = useMemo(() => {
     const baseTabs = SEMANTIC_TABS.filter(tab => tab.agents.some(key => groupedFields[key]?.length > 0));
     if (groupedFields.other?.length > 0) {
@@ -1040,6 +1082,25 @@ const OrderDetail = () => {
     return String(wrapper.value);
   };
 
+  const getHcpcsSuggestions = (field) => {
+    const suggestions = getRawExtractions(field).hcpcs_suggestions;
+    return Array.isArray(suggestions) ? suggestions : [];
+  };
+
+  const getHcpcsSuggestionCode = (suggestion) =>
+    suggestion?.hcpcs_code || suggestion?.code || suggestion?.value || '';
+
+  const getHcpcsSuggestionConfidence = (suggestion) => {
+    const raw = Number(suggestion?.confidence);
+    if (Number.isNaN(raw)) return null;
+    return Math.round(raw <= 1 ? raw * 100 : raw);
+  };
+
+  const hasPendingHcpcsSuggestions = (field) =>
+    field?.fieldName === 'hcpcs_code' &&
+    field?.value === null &&
+    getHcpcsSuggestions(field).length > 0;
+
   const getFieldSourceLabel = (field) => {
     const src = field?.source;
     if (!src) return null;
@@ -1061,6 +1122,9 @@ const OrderDetail = () => {
 
   const renderDocumentsAccordion = () => {
     const docs = documents || [];
+    const activeDocs = docs.filter((doc) => String(doc?.status || '').toLowerCase() !== 'replaced');
+    const replacedDocs = docs.filter((doc) => String(doc?.status || '').toLowerCase() === 'replaced');
+
     if (isLoadingDocuments && !docs.length) {
       return (
         <div className="border border-border/20 rounded-2xl bg-card px-5 py-4 flex items-center gap-3 text-muted-foreground">
@@ -1077,12 +1141,12 @@ const OrderDetail = () => {
         <div className="px-5 py-2.5 flex items-center gap-2.5 bg-muted/10 border-b border-border/10">
           <FileText className="w-3.5 h-3.5 text-primary" />
           <span className="text-[10px] font-black uppercase tracking-widest">Documents</span>
-          <span className="text-[9px] font-mono text-muted-foreground/40 bg-muted/40 px-1.5 py-0.5 rounded-full">{docs.length}</span>
+          <span className="text-[9px] font-mono text-muted-foreground/40 bg-muted/40 px-1.5 py-0.5 rounded-full">{activeDocs.length}</span>
         </div>
 
         {/* Accordion rows */}
         <div className="divide-y divide-border/10">
-          {docs.map((doc) => {
+          {activeDocs.map((doc) => {
             const docId = doc.doc_id || doc.id || doc.document_id;
             const isOpen = !!openDocs[docId];
             const conf = Math.round((doc.classification_confidence || doc.confidence || 0) * 100);
@@ -1148,6 +1212,45 @@ const OrderDetail = () => {
             );
           })}
         </div>
+
+        {replacedDocs.length > 0 && (
+          <div className="border-t border-border/10 bg-muted/[0.03]">
+            <button
+              type="button"
+              className="flex w-full items-center gap-2.5 px-5 py-2.5 text-left transition-colors hover:bg-muted/10"
+              onClick={() => setShowPreviousVersions(prev => !prev)}
+            >
+              <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-muted-foreground/40 transition-transform duration-150 ${showPreviousVersions ? 'rotate-90' : ''}`} />
+              <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">Previous Versions</span>
+              <span className="rounded-full bg-muted/50 px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground/50">{replacedDocs.length}</span>
+            </button>
+
+            {showPreviousVersions && (
+              <div className="divide-y divide-border/10 border-t border-border/10">
+                {replacedDocs.map((doc) => {
+                  const docId = getDocumentId(doc);
+                  const replacementFilename = getReplacementFilename(doc, docs);
+
+                  return (
+                    <div key={docId || getDocumentFilename(doc)} className="flex flex-col gap-2 px-10 py-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <span className="min-w-0 truncate text-xs font-bold text-muted-foreground/55 line-through" title={getDocumentFilename(doc)}>
+                          {getDocumentFilename(doc)}
+                        </span>
+                        <DocumentStatusBadge status={doc.status} />
+                      </div>
+                      {replacementFilename && (
+                        <span className="text-[10px] font-bold text-muted-foreground/60">
+                          Replaced by: <span className="text-muted-foreground">{replacementFilename}</span>
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   };
@@ -1421,6 +1524,51 @@ const OrderDetail = () => {
           </div>
         </CardContent>
       </Card>
+    );
+  };
+
+  const renderCSRReviewFields = () => {
+    if (!csrReviewFields.length) return null;
+
+    return (
+      <div className="rounded-2xl border border-amber-500/20 bg-card/70 p-5 space-y-4">
+        <div className="space-y-1">
+          <h4 className="text-sm font-black tracking-tight text-amber-700">Fields Needing Review</h4>
+          <p className="text-xs font-medium text-amber-700/70">Review these extracted fields before continuing.</p>
+        </div>
+        <div className="space-y-2">
+          {csrReviewFields.map((field) => {
+            const isHcpcsSuggestion = hasPendingHcpcsSuggestions(field);
+            const suggestions = getHcpcsSuggestions(field).slice(0, 3);
+
+            return (
+              <div key={field.fieldName} className="rounded-xl border border-amber-500/10 bg-amber-500/[0.03] p-3 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-black uppercase tracking-widest text-amber-700">{formatFieldName(field.fieldName)}</span>
+                  {isHcpcsSuggestion && (
+                    <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-amber-700">
+                      HCPCS Suggestions Available
+                    </span>
+                  )}
+                </div>
+                {isHcpcsSuggestion && suggestions.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {suggestions.map((suggestion, index) => {
+                      const code = getHcpcsSuggestionCode(suggestion);
+                      const confidence = getHcpcsSuggestionConfidence(suggestion);
+                      return (
+                        <span key={`${code || 'hcpcs'}-${index}`} className="rounded-lg bg-card px-2 py-1 font-mono font-black text-amber-700">
+                          {code || 'Unknown'}{confidence != null ? ` ${confidence}%` : ''}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
     );
   };
 
@@ -1867,8 +2015,15 @@ const OrderDetail = () => {
     }
 
     const hasCandidates = (order?.identity_candidate_matches || []).length > 0;
+    const csrReviewPanel = renderCSRReviewFields();
+
+    if (csrReviewPanel && !hasCandidates && !order?.patient_match_tier && !order?.identity_mismatch && !order?.identity_review_required) {
+      return <div className="space-y-5">{csrReviewPanel}</div>;
+    }
+
     return (
       <div className="space-y-5">
+        {csrReviewPanel}
         {(order?.identity_review_required || hasCandidates) && renderIdentityCandidates()}
 
         {!hasCandidates && order?.patient_match_tier === 3 && (
@@ -2009,11 +2164,9 @@ const OrderDetail = () => {
                     const isConflictField = field.has_conflict || field.status === 'conflict';
                     const rawExtractions = getRawExtractions(field);
                     const isHcpcsField = field.fieldName === 'hcpcs_code';
-                    const hcpcsSuggestions = Array.isArray(rawExtractions.hcpcs_suggestions)
-                      ? rawExtractions.hcpcs_suggestions.slice(0, 3)
-                      : [];
+                    const hcpcsSuggestions = getHcpcsSuggestions(field).slice(0, 3);
                     const hcpcsVerification = rawExtractions.hcpcs_verification;
-                    const showHcpcsSuggestions = isHcpcsField && !displayValue && hcpcsSuggestions.length > 0;
+                    const showHcpcsSuggestions = hasPendingHcpcsSuggestions(field);
                     const showHcpcsVerification = isHcpcsField && displayValue && hcpcsVerification;
                     const verificationVerdict = hcpcsVerification?.verdict;
 
@@ -2036,7 +2189,7 @@ const OrderDetail = () => {
                             {isConflictField && (
                               <span className="text-[8px] font-black bg-red-500 text-white px-1.5 py-0.5 rounded tracking-widest uppercase shrink-0">Conflict</span>
                             )}
-                            {field.needs_csr_review && (
+                            {(field.needs_csr_review || showHcpcsSuggestions) && (
                               <AlertCircle className="w-3 h-3 text-amber-500 shrink-0" title="Needs CSR Review" />
                             )}
                           </div>
@@ -2105,19 +2258,21 @@ const OrderDetail = () => {
 
                         {showHcpcsSuggestions && (
                           <div className="space-y-2 rounded-xl border border-blue-500/20 bg-blue-500/[0.03] p-3">
-                            <p className="text-[9px] font-black uppercase tracking-widest text-blue-700">Suggested HCPCS Codes</p>
+                            <p className="text-[9px] font-black uppercase tracking-widest text-blue-700">HCPCS Code Suggestions</p>
                             <div className="space-y-2">
                               {hcpcsSuggestions.map((suggestion, index) => {
-                                const code = suggestion?.code || suggestion?.hcpcs_code;
-                                const confidence = suggestion?.confidence != null ? Math.round(Number(suggestion.confidence) * 100) : null;
+                                const code = getHcpcsSuggestionCode(suggestion);
+                                const confidence = getHcpcsSuggestionConfidence(suggestion);
 
                                 return (
                                   <div key={`${code || 'suggestion'}-${index}`} className="rounded-lg border border-blue-500/10 bg-card/80 p-3 space-y-2">
                                     <div className="flex items-start justify-between gap-3">
-                                      <div className="min-w-0">
+                                      <div className="flex min-w-0 items-center gap-2">
                                         <p className="font-mono text-sm font-black text-blue-700">{code || 'Unknown code'}</p>
                                         {confidence != null && (
-                                          <p className="text-[10px] font-bold text-muted-foreground">{confidence}% confidence</p>
+                                          <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[9px] font-black text-blue-700">
+                                            {confidence}%
+                                          </span>
                                         )}
                                       </div>
                                       <Button
