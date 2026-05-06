@@ -84,13 +84,16 @@ const ACTIVE_DETAIL_SECTIONS = [
     title: 'Scope',
     icon: Filter,
     fields: [
-      'scope_level',
+      'scope_levels',
+      'scope_condition',
       'scope_category',
       'scope_body_part',
-      'scope_product_type',
-      'scope_payer',
-      'scope_plan',
-      'scope_state',
+      'scope_fabrication',
+      'scope_usage_time',
+      'payer_id',
+      'payer_name',
+      'payer_type',
+      'jurisdiction',
     ],
   },
   {
@@ -259,6 +262,61 @@ const ProductLineBadges = ({ rule }) => {
   );
 };
 
+const getScopeBadges = (rule) => {
+  const badges = [];
+  const isPending = rule?.status === 'pending';
+
+  if (isPending) {
+    const levels = rule.scope_levels || [];
+    const meaningful = levels.filter((level) => !['CONDITION', 'CATEGORY'].includes(level));
+    return meaningful.map((level) => ({ label: formatLabel(level), color: 'slate' }));
+  }
+
+  if (rule?.scope_usage_time && rule.scope_usage_time !== 'all') {
+    badges.push({ label: formatLabel(rule.scope_usage_time), color: 'blue' });
+  }
+  if (rule?.scope_body_part && rule.scope_body_part !== 'all') {
+    badges.push({ label: formatLabel(rule.scope_body_part), color: 'slate' });
+  }
+  if (rule?.scope_fabrication && rule.scope_fabrication !== 'all') {
+    badges.push({ label: formatLabel(rule.scope_fabrication), color: 'violet' });
+  }
+  if (rule?.scope_category === 'pump') {
+    badges.push({ label: 'Pump', color: 'orange' });
+  }
+  if (rule?.payer_id) {
+    badges.push({ label: rule.payer_name || rule.payer_id, color: 'amber' });
+  }
+  if (Array.isArray(rule?.jurisdiction) && !rule.jurisdiction.includes('ALL') && rule.jurisdiction.length > 0) {
+    badges.push({ label: rule.jurisdiction.join(', '), color: 'teal' });
+  }
+  return badges;
+};
+
+const scopeBadgeClasses = {
+  blue: 'border-blue-500/20 bg-blue-500/10 text-blue-700',
+  slate: 'border-slate-500/20 bg-slate-500/10 text-slate-700',
+  violet: 'border-violet-500/20 bg-violet-500/10 text-violet-700',
+  orange: 'border-orange-500/20 bg-orange-500/10 text-orange-700',
+  amber: 'border-amber-500/20 bg-amber-500/10 text-amber-700',
+  teal: 'border-teal-500/20 bg-teal-500/10 text-teal-700',
+};
+
+const ScopeBadges = ({ rule }) => {
+  const badges = getScopeBadges(rule);
+  if (!badges.length) return null;
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {badges.map((badge) => (
+        <Badge key={`${badge.color}-${badge.label}`} variant="outline" className={`rounded-lg ${scopeBadgeClasses[badge.color] || 'bg-background/70'}`}>
+          {badge.label}
+        </Badge>
+      ))}
+    </div>
+  );
+};
+
 const RuleCheckbox = ({ checked, onChange, label }) => (
   <button
     type="button"
@@ -350,6 +408,13 @@ const MinimalRuleDetails = ({ rule, showSourceText, onToggleSourceText }) => (
         </p>
       </section>
     </div>
+
+    {getScopeBadges(rule).length > 0 && (
+      <section className="rounded-2xl border border-border/40 bg-muted/10 p-5">
+        <p className="mb-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">SCOPE</p>
+        <ScopeBadges rule={rule} />
+      </section>
+    )}
 
     <section className="rounded-2xl border border-border/40 bg-background p-5">
       <Button
@@ -473,6 +538,7 @@ const PendingRuleCard = ({ rule, selected, onToggle, onView, onEdit, onHistory, 
                 <Badge variant="warning" className="rounded-lg">{formatLabel(getRuleCategory(rule) || 'uncategorized')}</Badge>
                 <ProductLineBadges rule={rule} />
               </div>
+              <ScopeBadges rule={rule} />
             </div>
             <div className="flex items-center gap-2">
               <Button variant="outline" className="h-10 rounded-xl text-xs font-black uppercase tracking-widest" onClick={onView}>
@@ -542,6 +608,7 @@ const ActiveRuleCard = ({ rule, onView, onEdit, onHistory, onDelete, deleting })
               <Badge variant="warning" className="rounded-lg">{formatLabel(getRuleCategory(rule) || 'uncategorized')}</Badge>
               <ProductLineBadges rule={rule} />
             </div>
+            <ScopeBadges rule={rule} />
           </div>
 
           <div className="flex items-center gap-2">
@@ -724,6 +791,24 @@ const EditRuleDialog = ({ open, rule, saving, onChange, onClose, onSave }) => {
                   label="Allowed Values"
                   value={joinCommaList(rule.allowed_values)}
                   onChange={(value) => setField('allowed_values', splitCommaList(value))}
+                />
+                <EditTextArea
+                  label="Scope Levels"
+                  value={joinCommaList(rule.scope_levels)}
+                  onChange={(value) => setField('scope_levels', splitCommaList(value))}
+                />
+                <EditField label="Scope Condition" value={rule.scope_condition} onChange={(value) => setField('scope_condition', value)} />
+                <EditField label="Scope Category" value={rule.scope_category} onChange={(value) => setField('scope_category', value)} />
+                <EditField label="Scope Body Part" value={rule.scope_body_part} onChange={(value) => setField('scope_body_part', value)} />
+                <EditField label="Scope Fabrication" value={rule.scope_fabrication} onChange={(value) => setField('scope_fabrication', value)} />
+                <EditField label="Scope Usage Time" value={rule.scope_usage_time} onChange={(value) => setField('scope_usage_time', value)} />
+                <EditField label="Payer ID" value={rule.payer_id} onChange={(value) => setField('payer_id', value)} />
+                <EditField label="Payer Name" value={rule.payer_name} onChange={(value) => setField('payer_name', value)} />
+                <EditField label="Payer Type" value={rule.payer_type} onChange={(value) => setField('payer_type', value)} />
+                <EditTextArea
+                  label="Jurisdiction"
+                  value={joinCommaList(rule.jurisdiction)}
+                  onChange={(value) => setField('jurisdiction', splitCommaList(value))}
                 />
               </>
             )}

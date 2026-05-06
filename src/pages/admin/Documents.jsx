@@ -54,6 +54,15 @@ const DOCUMENT_DISEASES = [
   { label: 'Diabetics', value: 'diabetics', comingSoon: true },
 ];
 
+const DOCUMENT_TYPES = [
+  { label: 'LCD - Local Coverage Determination', value: 'LCD' },
+  { label: 'NCD - National Coverage Determination', value: 'NCD' },
+  { label: 'Policy Article', value: 'Policy Article' },
+  { label: 'FAQ', value: 'FAQ' },
+  { label: 'Transmittal', value: 'Transmittal' },
+  { label: 'Payer Coverage Policy', value: 'Payer Coverage Policy' },
+];
+
 const getDocumentId = (doc) => doc?.document_id || doc?.id || doc?.doc_id;
 
 const getPdfUrl = (doc) => doc?.doc_url || doc?.document_url || doc?.pdf_url || doc?.url || doc?.file_url;
@@ -197,11 +206,15 @@ const SkeletonRow = () => (
 const UploadDialog = ({ open, onOpenChange, userId, onUploaded }) => {
   const fileRef = useRef(null);
   const [disease, setDisease] = useState('lymphedema');
+  const [docType, setDocType] = useState('LCD');
+  const [payerId, setPayerId] = useState('');
   const [file, setFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
 
   const reset = () => {
     setDisease('lymphedema');
+    setDocType('LCD');
+    setPayerId('');
     setFile(null);
     if (fileRef.current) fileRef.current.value = '';
   };
@@ -229,6 +242,10 @@ const UploadDialog = ({ open, onOpenChange, userId, onUploaded }) => {
       const body = new FormData();
       body.append('file', file);
       body.append('disease', disease.trim());
+      body.append('doc_type', docType);
+      if (docType === 'Payer Coverage Policy' && payerId) {
+        body.append('payer_id', payerId);
+      }
       body.append('user_id', userId);
 
       const response = await fetch(`${BASE_URL}/admin/documents/upload`, {
@@ -301,6 +318,34 @@ const UploadDialog = ({ open, onOpenChange, userId, onUploaded }) => {
               </SelectContent>
             </Select>
           </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Document Type</label>
+            <Select value={docType} onValueChange={setDocType}>
+              <SelectTrigger className="h-11 rounded-xl border-border/50 bg-background/50 text-sm font-medium">
+                <SelectValue placeholder="Select document type" />
+              </SelectTrigger>
+              <SelectContent className="rounded-xl border-border/50">
+                {DOCUMENT_TYPES.map((item) => (
+                  <SelectItem key={item.value} value={item.value} className="rounded-lg text-sm font-bold">
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {docType === 'Payer Coverage Policy' && (
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Payer Name / ID</label>
+              <Input
+                value={payerId}
+                onChange={(event) => setPayerId(event.target.value)}
+                placeholder="e.g. Aetna Medicare Advantage"
+                className="h-11 rounded-xl border-border/50 bg-background/50 text-sm font-medium"
+              />
+            </div>
+          )}
 
           <div className="space-y-2">
             <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">PDF File</label>
