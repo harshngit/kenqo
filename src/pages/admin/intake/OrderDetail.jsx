@@ -59,6 +59,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../../components/ui/select';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '../../../components/ui/accordion';
 
 import {
   getOrderStatus,
@@ -78,6 +84,7 @@ import {
   getPatientOrders,
   verifyEligibility,
   viewDocument,
+  getOrderSummaryHistory,
 } from '../../../services/intakeApi';
 
 // â”€â”€â”€ REUSABLE COMPONENTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -231,7 +238,7 @@ const DOC_TYPES = [
   'Measurement Form'
 ];
 
-const TERMINAL_STATUSES = ['extracted', 'complete', 'failed', 'awaiting_csr_decision'];
+const TERMINAL_STATUSES = ['extracted', 'complete', 'failed', 'awaiting_csr_decision', 'incomplete'];
 
 const shouldHaltPolling = (data) =>
   TERMINAL_STATUSES.includes(data?.status) || data?.awaiting_csr === true;
@@ -240,6 +247,7 @@ const shouldLoadFields = (data) =>
   data?.status === 'extracted' ||
   data?.status === 'complete' ||
   data?.status === 'awaiting_csr_decision' ||
+  data?.status === 'incomplete' ||
   data?.awaiting_csr === true;
 
 const getIdentityReviewPayload = (order) =>
@@ -315,9 +323,9 @@ const getConflictCount = (order) =>
 
 const getOrderSummaryText = (order) =>
   order?.summary_text ||
-  order?.summary ||
+  (typeof order?.summary === 'string' ? order.summary : null) ||
   order?.extraction?.summary_text ||
-  order?.extraction?.summary ||
+  (typeof order?.extraction?.summary === 'string' ? order.extraction.summary : null) ||
   order?.order_summary ||
   null;
 
@@ -477,12 +485,116 @@ const getFieldsSummary = (payload, fieldMap) => {
   return { total: values.length, green, yellow, red, conflicts };
 };
 
+const coerceFieldNames = (items) => {
+  if (!items) return [];
+
+  const list = Array.isArray(items)
+    ? items
+    : typeof items === 'object'
+      ? Object.entries(items).map(([key, value]) => (
+          typeof value === 'object' && value !== null
+            ? { fieldName: value.fieldName || value.field_name || value.name || key, ...value }
+            : key
+        ))
+      : [items];
+
+  return Array.from(new Set(
+    list
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        if (!item || typeof item !== 'object') return null;
+        return item.fieldName || item.field_name || item.name || item.label || item.key || item.id;
+      })
+      .filter(Boolean)
+  ));
+};
+
+const getNestedValue = (source, paths) => {
+  for (const path of paths) {
+    const value = path.reduce((acc, key) => acc?.[key], source);
+    if (Array.isArray(value) || (value && typeof value === 'object')) return value;
+  }
+  return null;
+};
+
+const isMissingField = (field) =>
+  field?.not_found ||
+  field?.value === null ||
+  field?.value === undefined ||
+  field?.value === '';
+
+const getFieldCriticality = (field) =>
+  String(
+    field?.criticality ||
+    field?.field_criticality ||
+    field?.severity ||
+    field?.risk_level ||
+    field?.required_level ||
+    ''
+  ).toUpperCase();
+
+const getStructuredFieldSummary = (order, fields) => {
+  const candidates = [
+    order?.summary,
+    order?.extraction?.summary,
+    fields?.summary,
+    fields?.data?.summary,
+  ];
+
+  return candidates.find((summary) =>
+    summary &&
+    typeof summary === 'object' &&
+    !Array.isArray(summary) &&
+    (
+      summary.extracted != null ||
+      (summary.conflicts && typeof summary.conflicts === 'object') ||
+      (summary.missing && typeof summary.missing === 'object')
+    )
+  ) || null;
+};
+
 // â”€â”€â”€ MAIN COMPONENT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+const inferSemanticAgentForField = (fieldName, field = {}) => {
+  const text = [
+    fieldName,
+    field?.category,
+    field?.section,
+    field?.domain,
+    field?.label,
+  ].filter(Boolean).join(' ').toLowerCase();
+
+  if (/(insurance|payer|member|policy|medicare|billing|prior_auth|authorization)/.test(text)) return 'agent_2';
+  if (/(provider|physician|doctor|facility|referring|therapist|npi|tax)/.test(text)) return 'agent_3';
+  if (/(rx|prescription|medication|hcpcs|icd|diagnosis|diagnostic)/.test(text)) return 'agent_6';
+  if (/(clinical|note|measurement|lymphedema|wound|edema|therapy|evaluation)/.test(text)) return 'agent_4';
+  if (/(dme|garment|compression|sleeve|stocking|item|quantity|size)/.test(text)) return 'agent_5';
+  if (/(patient|dob|birth|gender|phone|address|email|name)/.test(text)) return 'agent_1';
+
+  return 'other';
+};
+
+const formatFieldName = (name) => name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+const getHistoryLabel = (triggerAction) => {
+  if (!triggerAction) return 'Update';
+  if (triggerAction === 'extracted') return 'Initial Extraction';
+  if (triggerAction.startsWith('field_edit:')) {
+    const fieldName = triggerAction.split(':')[1];
+    return `Edited ${formatFieldName(fieldName)}`;
+  }
+  if (triggerAction.startsWith('conflict_resolved:')) {
+    const fieldName = triggerAction.split(':')[1];
+    return `Resolved ${formatFieldName(fieldName)}`;
+  }
+  return formatFieldName(triggerAction);
+};
 
 const OrderDetail = () => {
   const { orderId } = useParams();
   const navigate = useNavigate();
   const pollingRef = useRef(null);
+  const pollingStoppedRef = useRef(false);
 
   const [order, setOrder] = useState(null);
   const [fields, setFields] = useState(null);
@@ -490,11 +602,13 @@ const OrderDetail = () => {
   const [patients, setPatients] = useState([]);
   const [selectedManualPatientId, setSelectedManualPatientId] = useState('');
   const [patientOrders, setPatientOrders] = useState([]);
+  const [summaryHistory, setSummaryHistory] = useState([]);
   const [isLoadingStatus, setIsLoadingStatus] = useState(true);
   const [isLoadingFields, setIsLoadingFields] = useState(false);
   const [isLoadingDocuments, setIsLoadingDocuments] = useState(false);
   const [isLoadingPatients, setIsLoadingPatients] = useState(false);
   const [isLoadingPatientOrders, setIsLoadingPatientOrders] = useState(false);
+  const [isLoadingSummaryHistory, setIsLoadingSummaryHistory] = useState(false);
 
   // Document accordion & viewer state
   const [openDocs, setOpenDocs] = useState({});
@@ -548,12 +662,28 @@ const OrderDetail = () => {
     }
   }, [orderId]);
 
+  const fetchSummaryHistory = useCallback(async () => {
+    setIsLoadingSummaryHistory(true);
+    try {
+      const data = await getOrderSummaryHistory(orderId);
+      setSummaryHistory(data.history || []);
+    } catch (e) {
+      console.error('Failed to load summary history:', e);
+    } finally {
+      setIsLoadingSummaryHistory(false);
+    }
+  }, [orderId]);
+
   const fetchStatus = useCallback(async () => {
     try {
       const data = await getOrderStatus(orderId);
       setOrder(data);
       if (shouldHaltPolling(data)) {
-        if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+        pollingStoppedRef.current = true;
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
         if (shouldLoadFields(data)) {
           setIsLoadingFields(true);
           getOrderFields(orderId)
@@ -570,29 +700,60 @@ const OrderDetail = () => {
         }
         fetchDocuments();
       }
+      return data;
     } catch (e) {
       console.error('Polling failed:', e);
+      return null;
     } finally {
       setIsLoadingStatus(false);
     }
   }, [orderId, fetchDocuments]);
 
   const restartPolling = useCallback(() => {
-    if (pollingRef.current) clearInterval(pollingRef.current);
-    fetchStatus();
-    pollingRef.current = setInterval(fetchStatus, 3000);
+    pollingStoppedRef.current = false;
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+
+    fetchStatus().then((data) => {
+      if (pollingStoppedRef.current || shouldHaltPolling(data)) return;
+      pollingRef.current = setInterval(() => {
+        if (pollingStoppedRef.current) return;
+        fetchStatus();
+      }, 3000);
+    });
   }, [fetchStatus]);
 
   useEffect(() => {
-    fetchStatus();
+    let cancelled = false;
+    pollingStoppedRef.current = false;
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+
+    fetchStatus().then((data) => {
+      if (cancelled || pollingStoppedRef.current || shouldHaltPolling(data)) return;
+      pollingRef.current = setInterval(() => {
+        if (pollingStoppedRef.current) return;
+        fetchStatus();
+      }, 3000);
+    });
     fetchDocuments();
-    pollingRef.current = setInterval(fetchStatus, 3000);
     setIsLoadingPatients(true);
     listPatients()
       .then(data => setPatients(data.patients || []))
       .catch(() => {})
       .finally(() => setIsLoadingPatients(false));
-    return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
+    return () => {
+      cancelled = true;
+      pollingStoppedRef.current = true;
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
   }, [orderId, fetchStatus, fetchDocuments]);
 
   useEffect(() => {
@@ -612,9 +773,16 @@ const OrderDetail = () => {
   }, [order?.patient_id, order?.awaiting_csr, order?.identity_decision_status]);
 
   useEffect(() => {
-    if (!order || fields || isLoadingFields || !shouldLoadFields(order)) return;
-    fetchFields();
-  }, [order, fields, isLoadingFields, fetchFields]);
+    if (!order || !shouldLoadFields(order)) return;
+
+    if (!fields && !isLoadingFields) {
+      fetchFields();
+    }
+
+    if (summaryHistory.length === 0 && !isLoadingSummaryHistory) {
+      fetchSummaryHistory();
+    }
+  }, [order, fields, isLoadingFields, summaryHistory.length, isLoadingSummaryHistory, fetchFields, fetchSummaryHistory]);
 
   useEffect(() => {
     const hasSummaryPayload =
@@ -808,8 +976,7 @@ const OrderDetail = () => {
       setFields(null);
       setOrder(prev => prev ? ({ ...prev, status: 'pending' }) : { status: 'pending' });
       fetchDocuments();
-      if (pollingRef.current) clearInterval(pollingRef.current);
-      pollingRef.current = setInterval(fetchStatus, 3000);
+      restartPolling();
     } catch (e) {
       toast.error(e.message || 'Failed to add documents');
     } finally {
@@ -887,6 +1054,7 @@ const OrderDetail = () => {
       toast.success('Field updated');
       setEditModal({ open: false, fieldName: '', currentValue: '', newValue: '', reason: '' });
       fetchFields();
+      fetchSummaryHistory();
     } catch (e) { toast.error(e.message); }
     finally { setIsSubmittingEdit(false); }
   };
@@ -902,12 +1070,13 @@ const OrderDetail = () => {
       toast.success('Field reverted successfully');
       fetchFields();
       fetchStatus();
+      fetchSummaryHistory();
     } catch (e) {
       toast.error(e.message || 'Failed to undo field change');
     }
   };
 
-  const useHcpcsSuggestion = async (field, suggestion) => {
+  const applyHcpcsSuggestion = async (field, suggestion) => {
     const code = getHcpcsSuggestionCode(suggestion);
     if (!code) return;
 
@@ -915,6 +1084,7 @@ const OrderDetail = () => {
       await editField(orderId, 'hcpcs_code', code, 'Selected from HCPCS suggestions');
       toast.success('HCPCS code selected');
       fetchFields();
+      fetchSummaryHistory();
     } catch (e) {
       toast.error(e.message || 'Failed to select HCPCS code');
     }
@@ -957,6 +1127,7 @@ const OrderDetail = () => {
       toast.success('Conflict resolved');
       setConflictModal({ open: false, field: null, choice: '', manualValue: '', reason: '' });
       fetchFields();
+      fetchSummaryHistory();
     } catch (e) { toast.error(e.message); }
     finally { setIsSubmittingConflict(false); }
   };
@@ -1017,6 +1188,99 @@ const OrderDetail = () => {
   const summaryText = useMemo(() => getOrderSummaryText(order), [order]);
   const fieldBreakdown = useMemo(() => getFieldBreakdown(order), [order]);
   const missingDocuments = useMemo(() => getMissingDocuments(order), [order]);
+  const extractionSummary = useMemo(() => {
+    const structuredSummary = getStructuredFieldSummary(order, fields);
+    const fieldEntries = Object.entries(normalizedFieldMap).map(([fieldName, wrapper]) => ({
+      fieldName,
+      ...wrapper,
+    }));
+    const missingFields = fieldEntries.filter(isMissingField);
+    const conflictFields = fieldEntries.filter((field) => field?.status === 'conflict' || field?.has_conflict);
+
+    const missingFromBreakdown = (level) => coerceFieldNames(getNestedValue(
+      { order, fieldBreakdown },
+      [
+        ['fieldBreakdown', level, 'missing_fields'],
+        ['fieldBreakdown', level, 'missing'],
+        ['fieldBreakdown', level, 'fields'],
+        ['fieldBreakdown', level.toUpperCase(), 'missing_fields'],
+        ['fieldBreakdown', level.toUpperCase(), 'missing'],
+        ['fieldBreakdown', level.toUpperCase(), 'fields'],
+        ['fieldBreakdown', 'missing', level],
+        ['fieldBreakdown', 'missing_fields', level],
+        ['order', 'missing_fields_by_criticality', level],
+        ['order', 'missing_fields_by_criticality', level.toUpperCase()],
+        ['order', 'extraction', 'missing_fields_by_criticality', level],
+        ['order', 'extraction', 'missing_fields_by_criticality', level.toUpperCase()],
+      ]
+    ));
+
+    const fallbackMissingByLevel = (level) => missingFields
+      .filter((field) => getFieldCriticality(field) === level.toUpperCase())
+      .map((field) => field.fieldName);
+
+    const redMissing = missingFromBreakdown('red');
+    const yellowMissing = missingFromBreakdown('yellow');
+    const greenMissing = missingFromBreakdown('green');
+    const structuredRedMissing = structuredSummary?.missing?.red || {};
+    const structuredYellowMissing = structuredSummary?.missing?.yellow || {};
+    const structuredGreenMissing = structuredSummary?.missing?.green || {};
+    const structuredConflicts = structuredSummary?.conflicts || {};
+    const conflictNames = coerceFieldNames(getNestedValue(
+      { order, fieldBreakdown },
+      [
+        ['fieldBreakdown', 'conflicts', 'fields'],
+        ['fieldBreakdown', 'conflicts', 'field_names'],
+        ['fieldBreakdown', 'conflicts'],
+        ['order', 'conflict_fields'],
+        ['order', 'extraction', 'conflict_fields'],
+      ]
+    ));
+    const structuredConflictFields = coerceFieldNames(structuredConflicts?.fields || (Array.isArray(structuredConflicts) ? structuredConflicts : null));
+    const structuredMissingFields = {
+      red: coerceFieldNames(structuredRedMissing?.fields || (Array.isArray(structuredRedMissing) ? structuredRedMissing : null)),
+      yellow: coerceFieldNames(structuredYellowMissing?.fields || (Array.isArray(structuredYellowMissing) ? structuredYellowMissing : null)),
+      green: coerceFieldNames(structuredGreenMissing?.fields || (Array.isArray(structuredGreenMissing) ? structuredGreenMissing : null)),
+    };
+
+    const extractedCountFromBreakdown =
+      structuredSummary?.extracted ??
+      fieldBreakdown?.extracted_fields ??
+      fieldBreakdown?.extracted ??
+      order?.extracted_fields ??
+      order?.extraction?.extracted_fields;
+
+    const totalFromBreakdown =
+      structuredSummary?.total ??
+      fieldBreakdown?.total_fields ??
+      fieldBreakdown?.total ??
+      order?.total_fields ??
+      order?.extraction?.total_fields;
+
+    const finalMissing = {
+      red: structuredMissingFields.red.length ? structuredMissingFields.red : (redMissing.length ? redMissing : fallbackMissingByLevel('red')),
+      yellow: structuredMissingFields.yellow.length ? structuredMissingFields.yellow : (yellowMissing.length ? yellowMissing : fallbackMissingByLevel('yellow')),
+      green: structuredMissingFields.green.length ? structuredMissingFields.green : (greenMissing.length ? greenMissing : fallbackMissingByLevel('green')),
+    };
+    const finalConflicts = structuredConflictFields.length ? structuredConflictFields : (conflictNames.length ? conflictNames : conflictFields.map((field) => field.fieldName));
+
+    return {
+      total: Number(totalFromBreakdown ?? normalizedFieldsSummary.total ?? fieldEntries.length ?? 0),
+      extracted: Number(extractedCountFromBreakdown ?? fieldEntries.filter((field) => !isMissingField(field)).length ?? 0),
+      conflicts: finalConflicts,
+      conflictCount: Number(structuredConflicts?.count ?? getConflictCount(order) ?? finalConflicts.length ?? 0),
+      missing: {
+        red: finalMissing.red,
+        yellow: finalMissing.yellow,
+        green: finalMissing.green,
+      },
+      missingCounts: {
+        red: Number(structuredRedMissing?.count ?? finalMissing.red.length),
+        yellow: Number(structuredYellowMissing?.count ?? finalMissing.yellow.length),
+        green: Number(structuredGreenMissing?.count ?? finalMissing.green.length),
+      },
+    };
+  }, [fieldBreakdown, fields, normalizedFieldMap, normalizedFieldsSummary.total, order]);
 
   const groupedFields = useMemo(() => {
     if (!Object.keys(normalizedFieldMap).length) return {};
@@ -1024,8 +1288,12 @@ const OrderDetail = () => {
     Object.entries(normalizedFieldMap).forEach(([fieldName, wrapper]) => {
       const sourceAgents = parseSourceAgents(wrapper.source_agents);
       const agentKey = sourceAgents[0] || wrapper.source_agent || 'other';
-      if (!groups[agentKey]) groups[agentKey] = [];
-      groups[agentKey].push({ fieldName, ...wrapper, source_agents: sourceAgents });
+
+      const tabForAgent = SEMANTIC_TABS.find((tab) => tab.agents.includes(agentKey));
+      const finalKey = tabForAgent ? agentKey : inferSemanticAgentForField(fieldName, wrapper);
+
+      if (!groups[finalKey]) groups[finalKey] = [];
+      groups[finalKey].push({ fieldName, ...wrapper, source_agents: sourceAgents });
     });
     return groups;
   }, [normalizedFieldMap]);
@@ -1072,8 +1340,6 @@ const OrderDetail = () => {
     if (conf >= 0.60) return 'bg-amber-500';
     return 'bg-red-500';
   };
-
-  const formatFieldName = (name) => name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
   const formatFieldValue = (wrapper) => {
     if (wrapper.not_found || wrapper.value === null || wrapper.value === undefined) return null;
@@ -1136,122 +1402,127 @@ const OrderDetail = () => {
     if (!docs.length) return null;
 
     return (
-      <div className="border border-border/20 rounded-2xl bg-card overflow-hidden">
-        {/* Strip header */}
-        <div className="px-5 py-2.5 flex items-center gap-2.5 bg-muted/10 border-b border-border/10">
-          <FileText className="w-3.5 h-3.5 text-primary" />
-          <span className="text-[10px] font-black uppercase tracking-widest">Documents</span>
-          <span className="text-[9px] font-mono text-muted-foreground/40 bg-muted/40 px-1.5 py-0.5 rounded-full">{activeDocs.length}</span>
-        </div>
+      <Accordion type="single" collapsible defaultValue="documents" className="overflow-hidden rounded-2xl border border-border/20 bg-card">
+        <AccordionItem value="documents" className="border-none">
+          <AccordionTrigger className="bg-muted/10 px-5 py-2.5 hover:no-underline">
+            <div className="flex items-center gap-2.5">
+              <FileText className="w-3.5 h-3.5 text-primary" />
+              <span className="text-[10px] font-black uppercase tracking-widest">Documents</span>
+              <span className="text-[9px] font-mono text-muted-foreground/40 bg-muted/40 px-1.5 py-0.5 rounded-full">{activeDocs.length}</span>
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="pb-0">
 
-        {/* Accordion rows */}
-        <div className="divide-y divide-border/10">
-          {activeDocs.map((doc) => {
-            const docId = doc.doc_id || doc.id || doc.document_id;
-            const isOpen = !!openDocs[docId];
-            const conf = Math.round((doc.classification_confidence || doc.confidence || 0) * 100);
-            const confColor = conf >= 85 ? 'text-emerald-500' : conf >= 60 ? 'text-amber-500' : 'text-red-500';
+            {/* Accordion rows */}
+            <div className="divide-y divide-border/10 border-t border-border/10">
+              {activeDocs.map((doc) => {
+                const docId = doc.doc_id || doc.id || doc.document_id;
+                const isOpen = !!openDocs[docId];
+                const conf = Math.round((doc.classification_confidence || doc.confidence || 0) * 100);
+                const confColor = conf >= 85 ? 'text-emerald-500' : conf >= 60 ? 'text-amber-500' : 'text-red-500';
 
-            return (
-              <div key={docId || doc.filename}>
-                {/* Collapsed row */}
+                return (
+                  <div key={docId || doc.filename}>
+                    {/* Collapsed row */}
+                    <button
+                      type="button"
+                      className="w-full px-5 py-3 flex items-center gap-3 hover:bg-muted/10 transition-colors text-left"
+                      onClick={() => setOpenDocs(prev => ({ ...prev, [docId]: !prev[docId] }))}
+                    >
+                      <ChevronRight className={`w-3.5 h-3.5 text-muted-foreground/40 transition-transform duration-150 shrink-0 ${isOpen ? 'rotate-90' : ''}`} />
+                      <span className="text-xs font-bold truncate flex-1 min-w-0" title={doc.filename}>
+                        {doc.filename}
+                      </span>
+                      <span className="text-[9px] font-black bg-muted px-1.5 py-0.5 rounded text-muted-foreground/60 uppercase shrink-0">
+                        {doc.doc_type || 'unclassified'}
+                      </span>
+                      <DocumentStatusBadge status={doc.status} />
+                      <span className={`text-[10px] font-black font-mono shrink-0 ${confColor}`}>{conf}%</span>
+                      {(doc.status === 'failed' || doc.doc_type === 'unassigned_doc_type') && (
+                        <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                      )}
+                    </button>
+
+                    {/* Expanded panel */}
+                    {isOpen && (
+                      <div className="px-10 py-3 bg-muted/[0.03] border-t border-border/10 space-y-3 animate-in slide-in-from-top-1 duration-150">
+                        {doc.classification_reasoning && (
+                          <p className="text-[11px] text-muted-foreground leading-relaxed">{doc.classification_reasoning}</p>
+                        )}
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 rounded-lg px-3 text-[10px] font-black uppercase tracking-widest gap-1.5 border-primary/20 text-primary hover:bg-primary/5"
+                            onClick={() => handleViewDoc(doc)}
+                            disabled={viewingDoc === docId}
+                          >
+                            {viewingDoc === docId
+                              ? <Loader2 className="w-3 h-3 animate-spin" />
+                              : <ExternalLink className="w-3 h-3" />
+                            }
+                            View
+                          </Button>
+                          {canAddDocuments && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 rounded-lg px-3 text-[10px] font-black uppercase tracking-widest gap-1.5 text-red-500 hover:bg-red-500/10"
+                              onClick={() => handleDeleteDoc(docId)}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              Delete
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {replacedDocs.length > 0 && (
+              <div className="border-t border-border/10 bg-muted/[0.03]">
                 <button
                   type="button"
-                  className="w-full px-5 py-3 flex items-center gap-3 hover:bg-muted/10 transition-colors text-left"
-                  onClick={() => setOpenDocs(prev => ({ ...prev, [docId]: !prev[docId] }))}
+                  className="flex w-full items-center gap-2.5 px-5 py-2.5 text-left transition-colors hover:bg-muted/10"
+                  onClick={() => setShowPreviousVersions(prev => !prev)}
                 >
-                  <ChevronRight className={`w-3.5 h-3.5 text-muted-foreground/40 transition-transform duration-150 shrink-0 ${isOpen ? 'rotate-90' : ''}`} />
-                  <span className="text-xs font-bold truncate flex-1 min-w-0" title={doc.filename}>
-                    {doc.filename}
-                  </span>
-                  <span className="text-[9px] font-black bg-muted px-1.5 py-0.5 rounded text-muted-foreground/60 uppercase shrink-0">
-                    {doc.doc_type || 'unclassified'}
-                  </span>
-                  <DocumentStatusBadge status={doc.status} />
-                  <span className={`text-[10px] font-black font-mono shrink-0 ${confColor}`}>{conf}%</span>
-                  {(doc.status === 'failed' || doc.doc_type === 'unassigned_doc_type') && (
-                    <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
-                  )}
+                  <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-muted-foreground/40 transition-transform duration-150 ${showPreviousVersions ? 'rotate-90' : ''}`} />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">Previous Versions</span>
+                  <span className="rounded-full bg-muted/50 px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground/50">{replacedDocs.length}</span>
                 </button>
 
-                {/* Expanded panel */}
-                {isOpen && (
-                  <div className="px-10 py-3 bg-muted/[0.03] border-t border-border/10 space-y-3 animate-in slide-in-from-top-1 duration-150">
-                    {doc.classification_reasoning && (
-                      <p className="text-[11px] text-muted-foreground leading-relaxed">{doc.classification_reasoning}</p>
-                    )}
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 rounded-lg px-3 text-[10px] font-black uppercase tracking-widest gap-1.5 border-primary/20 text-primary hover:bg-primary/5"
-                        onClick={() => handleViewDoc(doc)}
-                        disabled={viewingDoc === docId}
-                      >
-                        {viewingDoc === docId
-                          ? <Loader2 className="w-3 h-3 animate-spin" />
-                          : <ExternalLink className="w-3 h-3" />
-                        }
-                        View
-                      </Button>
-                      {canAddDocuments && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 rounded-lg px-3 text-[10px] font-black uppercase tracking-widest gap-1.5 text-red-500 hover:bg-red-500/10"
-                          onClick={() => handleDeleteDoc(docId)}
-                        >
-                          <Trash2 className="w-3 h-3" />
-                          Delete
-                        </Button>
-                      )}
-                    </div>
+                {showPreviousVersions && (
+                  <div className="divide-y divide-border/10 border-t border-border/10">
+                    {replacedDocs.map((doc) => {
+                      const docId = getDocumentId(doc);
+                      const replacementFilename = getReplacementFilename(doc, docs);
+
+                      return (
+                        <div key={docId || getDocumentFilename(doc)} className="flex flex-col gap-2 px-10 py-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            <span className="min-w-0 truncate text-xs font-bold text-muted-foreground/55 line-through" title={getDocumentFilename(doc)}>
+                              {getDocumentFilename(doc)}
+                            </span>
+                            <DocumentStatusBadge status={doc.status} />
+                          </div>
+                          {replacementFilename && (
+                            <span className="text-[10px] font-bold text-muted-foreground/60">
+                              Replaced by: <span className="text-muted-foreground">{replacementFilename}</span>
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
-            );
-          })}
-        </div>
-
-        {replacedDocs.length > 0 && (
-          <div className="border-t border-border/10 bg-muted/[0.03]">
-            <button
-              type="button"
-              className="flex w-full items-center gap-2.5 px-5 py-2.5 text-left transition-colors hover:bg-muted/10"
-              onClick={() => setShowPreviousVersions(prev => !prev)}
-            >
-              <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-muted-foreground/40 transition-transform duration-150 ${showPreviousVersions ? 'rotate-90' : ''}`} />
-              <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">Previous Versions</span>
-              <span className="rounded-full bg-muted/50 px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground/50">{replacedDocs.length}</span>
-            </button>
-
-            {showPreviousVersions && (
-              <div className="divide-y divide-border/10 border-t border-border/10">
-                {replacedDocs.map((doc) => {
-                  const docId = getDocumentId(doc);
-                  const replacementFilename = getReplacementFilename(doc, docs);
-
-                  return (
-                    <div key={docId || getDocumentFilename(doc)} className="flex flex-col gap-2 px-10 py-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex min-w-0 items-center gap-2.5">
-                        <span className="min-w-0 truncate text-xs font-bold text-muted-foreground/55 line-through" title={getDocumentFilename(doc)}>
-                          {getDocumentFilename(doc)}
-                        </span>
-                        <DocumentStatusBadge status={doc.status} />
-                      </div>
-                      {replacementFilename && (
-                        <span className="text-[10px] font-bold text-muted-foreground/60">
-                          Replaced by: <span className="text-muted-foreground">{replacementFilename}</span>
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
             )}
-          </div>
-        )}
-      </div>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
     );
   };
 
@@ -1304,44 +1575,182 @@ const OrderDetail = () => {
 
   const renderOrderSummaryCard = () => {
     const hasSummary = Boolean(summaryText);
-    const hasStructuredSummary = normalizedFieldsSummary.total > 0;
+    const summarySections = [
+      {
+        value: 'critical',
+        title: 'Critical Missing',
+        count: extractionSummary.missingCounts.red,
+        fields: extractionSummary.missing.red,
+        description: 'Required fields that need immediate attention.',
+        className: 'border-red-500/30 bg-red-500/[0.03]',
+        badgeClassName: 'bg-red-500 text-white',
+      },
+      {
+        value: 'conflicts',
+        title: 'Conflicts',
+        count: extractionSummary.conflictCount,
+        fields: extractionSummary.conflicts,
+        description: 'Fields with multiple extracted values needing CSR resolution.',
+        className: 'border-red-500/25 bg-red-500/[0.02]',
+        badgeClassName: 'bg-red-500 text-white',
+      },
+      {
+        value: 'moderate',
+        title: 'Moderate Missing',
+        count: extractionSummary.missingCounts.yellow,
+        fields: extractionSummary.missing.yellow,
+        description: 'Helpful fields that should be filled when available.',
+        className: 'border-amber-500/30 bg-amber-500/[0.03]',
+        badgeClassName: 'bg-amber-500 text-white',
+      },
+      {
+        value: 'optional',
+        title: 'Optional Missing',
+        count: extractionSummary.missingCounts.green,
+        fields: extractionSummary.missing.green,
+        description: 'Nice-to-have fields that are lower priority.',
+        className: 'border-border/30 bg-muted/[0.03]',
+        badgeClassName: 'bg-muted text-muted-foreground border border-border/40',
+      },
+    ];
+    const defaultSummarySections = summarySections
+      .filter((section) => ['critical', 'conflicts'].includes(section.value) && section.count > 0)
+      .map((section) => section.value);
 
     return (
-      <Card className="border border-border/20 rounded-2xl bg-card overflow-hidden">
-        <CardHeader>
-          <CardTitle>Order Summary</CardTitle>
+      <Card className="overflow-hidden rounded-2xl border border-border/20 bg-card">
+        <CardHeader className="space-y-1 border-b border-border/10">
+          <CardTitle className="text-base font-black tracking-tight">Extraction Summary</CardTitle>
+          <p className="text-xs font-medium text-muted-foreground">
+            Review missing fields and conflicts before proceeding with validation.
+          </p>
         </CardHeader>
-        <CardContent>
-          {hasSummary ? (
-            <p className="text-sm mb-4">{summaryText}</p>
-          ) : hasStructuredSummary ? (
-            <p className="text-sm mb-4 text-muted-foreground">
-              Text summary not returned by the backend. Structured extraction summary: {normalizedFieldsSummary.total} total fields, {normalizedFieldsSummary.green} green, {normalizedFieldsSummary.yellow} yellow, {normalizedFieldsSummary.red} red.
-            </p>
-          ) : (
-            <p className="text-sm mb-4 text-muted-foreground">Summary will appear after extraction completes</p>
-          )}
+        <CardContent className="space-y-5 p-5">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div className="rounded-xl border border-border/30 bg-muted/[0.04] p-4">
+              <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/55">Total</p>
+              <p className="mt-1 text-2xl font-black tracking-tight">{extractionSummary.total}</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">Fields</p>
+            </div>
+            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.03] p-4">
+              <p className="text-[9px] font-black uppercase tracking-widest text-emerald-700/70">Extracted</p>
+              <p className="mt-1 text-2xl font-black tracking-tight text-emerald-700">{extractionSummary.extracted}</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-700/55">Fields</p>
+            </div>
+            <div className="rounded-xl border border-red-500/30 bg-red-500/[0.04] p-4">
+              <p className="text-[9px] font-black uppercase tracking-widest text-red-700/70">Conflicts</p>
+              <p className="mt-1 text-2xl font-black tracking-tight text-red-700">{extractionSummary.conflictCount}</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-red-700/55">Need resolution</p>
+            </div>
+          </div>
 
-          {hasStructuredSummary && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs mt-4">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 bg-red-500 rounded-full" />
-                <span>RED: {normalizedFieldsSummary.red}</span>
+          <Accordion type="single" collapsible defaultValue="summary" className="w-full">
+            <AccordionItem value="summary" className="border-none">
+              <AccordionTrigger className="hover:no-underline py-0 [&>svg]:w-5 [&>svg]:h-5 [&>svg]:text-muted-foreground/50 [&>svg]:mr-4">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4 w-full text-left pr-4">
+                  {summarySections.map((section) => (
+                    <div
+                      key={section.value}
+                      className={`min-h-[112px] rounded-xl border border-border/30 px-4 py-4 ${section.className}`}
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-foreground">
+                          {section.title}
+                        </span>
+                        <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${section.badgeClassName}`}>
+                          {section.count} field{section.count === 1 ? '' : 's'}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs font-medium text-muted-foreground">{section.description}</p>
+                    </div>
+                  ))}
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="pb-0 pt-3">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4 w-full">
+                  {summarySections.map((section) => (
+                    <div
+                      key={section.value}
+                      className={`rounded-xl border border-border/30 px-4 py-4 ${section.className}`}
+                    >
+                      {section.fields.length > 0 ? (
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          {section.fields.map((field) => (
+                            <span
+                              key={`${section.value}-${field}`}
+                              className="rounded-lg border border-border/30 bg-card px-2.5 py-1 text-[11px] font-bold text-muted-foreground shadow-sm"
+                            >
+                              {formatFieldName(String(field))}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="pt-1 text-xs font-medium text-muted-foreground">
+                          No field names returned for this section.
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+
+          {hasSummary && (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-border/20 bg-muted/[0.03] p-4">
+                <p className="mb-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground/50">Narrative Summary</p>
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  {summaryHistory.length > 0 ? summaryHistory[0].summary_text : summaryText}
+                </p>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 bg-amber-500 rounded-full" />
-                <span>YELLOW: {normalizedFieldsSummary.yellow}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 bg-emerald-500 rounded-full" />
-                <span>GREEN: {normalizedFieldsSummary.green}</span>
-              </div>
+
+              {summaryHistory.length > 0 && (
+                <Accordion type="single" collapsible className="w-full">
+                  <AccordionItem value="audit-trail" className="border-none">
+                    <AccordionTrigger className="hover:no-underline py-2 [&>svg]:w-4 [&>svg]:h-4 [&>svg]:text-muted-foreground/40">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/50">
+                        Summary Audit Trail ({summaryHistory.length} versions)
+                      </p>
+                    </AccordionTrigger>
+                    <AccordionContent className="pb-2">
+                      <div className="relative space-y-4 pl-4 before:absolute before:left-[11px] before:top-2 before:h-[calc(100%-16px)] before:w-[1px] before:bg-border/30 pt-4">
+                        {summaryHistory.map((item, idx) => (
+                          <div key={item.version || idx} className="relative group">
+                            <div className={`absolute -left-[9.5px] top-1.5 h-2 w-2 rounded-full border-2 transition-colors duration-200 ${idx === 0 ? 'bg-primary border-primary ring-4 ring-primary/10' : 'bg-muted border-border group-hover:border-muted-foreground'}`} />
+                            <div className={`rounded-xl border p-3.5 transition-all duration-200 ${idx === 0 ? 'bg-muted/30 border-primary/20 shadow-sm' : 'bg-transparent border-border/20 hover:border-border/40'}`}>
+                              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-[10px] font-black uppercase tracking-widest ${idx === 0 ? 'text-primary' : 'text-muted-foreground'}`}>
+                                    {getHistoryLabel(item.trigger_action)}
+                                  </span>
+                                  {item.completeness_score != null && (
+                                    <span className="rounded-lg bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-black text-emerald-600 border border-emerald-500/20">
+                                      {Math.round(item.completeness_score)}% Complete
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-widest">
+                                  {item.created_at ? new Date(item.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'Pending'}
+                                </span>
+                              </div>
+                              <p className="text-xs leading-relaxed text-muted-foreground/80 font-medium">
+                                {item.summary_text}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
+              )}
             </div>
           )}
 
           {missingDocuments?.length > 0 && (
-            <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
-              {'Missing documents: '}
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.04] p-3 text-xs font-bold text-amber-800">
+              <span className="font-black uppercase tracking-widest">Missing documents: </span>
               {missingDocuments.join(', ')}
             </div>
           )}
@@ -2281,7 +2690,7 @@ const OrderDetail = () => {
                                         className="h-7 rounded-lg px-3 text-[9px] font-black uppercase tracking-widest"
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          useHcpcsSuggestion(field, suggestion);
+                                          applyHcpcsSuggestion(field, suggestion);
                                         }}
                                       >
                                         Use This Code
@@ -2469,6 +2878,7 @@ const OrderDetail = () => {
 
   const isCompactLayout = order?.status === 'extracted' ||
     order?.status === 'complete' ||
+    order?.status === 'incomplete' ||
     (order?.status === 'awaiting_csr_decision' && fields) ||
     (order?.awaiting_csr && fields);
 
@@ -2617,7 +3027,7 @@ const OrderDetail = () => {
                 </Card>
               )}
 
-              {(order?.status === 'extracted' || order?.status === 'complete' || (order?.status === 'awaiting_csr_decision' && fields) || (order?.awaiting_csr && fields)) && (
+              {(order?.status === 'extracted' || order?.status === 'complete' || order?.status === 'incomplete' || (order?.status === 'awaiting_csr_decision' && fields) || (order?.awaiting_csr && fields)) && (
                 <div className="space-y-4 animate-in fade-in duration-700">
                   {renderFieldSummaryPills()}
                   {renderFieldTabs()}

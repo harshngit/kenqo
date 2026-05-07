@@ -101,6 +101,14 @@ export const getOrderDocuments = async (orderId) => {
   return handleResponse(response);
 };
 
+export const getOrderSummaryHistory = async (orderId) => {
+  const response = await fetch(`${BASE_URL}/intake/orders/${orderId}/summary-history`, {
+    method: 'GET',
+    headers: getHeaders()
+  });
+  return handleResponse(response);
+};
+
 export const addOrderDocuments = async (orderId, formData) => {
   const response = await fetch(`${BASE_URL}/intake/orders/${orderId}/documents`, {
     method: 'POST',

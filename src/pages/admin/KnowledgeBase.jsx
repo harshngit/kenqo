@@ -3,6 +3,7 @@ import { useSelector } from 'react-redux';
 import { toast } from 'sonner';
 import {
   AlertCircle,
+  ArrowRight,
   BookOpen,
   Check,
   ChevronDown,
@@ -15,6 +16,8 @@ import {
   Eye,
   FileText,
   Filter,
+  Crown,
+  GitMerge,
   Hash,
   History,
   Layers,
@@ -30,6 +33,11 @@ import {
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent } from '../../components/ui/card';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '../../components/ui/collapsible';
 import {
   Dialog,
   DialogContent,
@@ -112,6 +120,15 @@ const ACTIVE_DETAIL_SECTIONS = [
 ];
 
 const getRuleId = (rule) => rule?.rule_id || rule?.id;
+
+const normalizeRuleId = (ruleId) => String(ruleId || '').toLowerCase();
+
+const getRuleDomId = (ruleId) => `kb-rule-${String(ruleId || '').replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+
+const getMergeRefId = (ref) => {
+  if (!ref || typeof ref !== 'object') return ref;
+  return ref.rule_id || ref.id || ref.ruleId || ref.source_rule_id || ref.target_rule_id || '';
+};
 
 const getSourceDocument = (rule) => rule?.source_document || rule?.source_doc || rule?.document_id || '-';
 const getSourceDocumentName = (rule) => (
@@ -220,6 +237,11 @@ const StatusBadge = ({ status }) => {
       label: 'Active',
       className: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
     },
+    merged: {
+      icon: GitMerge,
+      label: 'Merged',
+      className: 'bg-slate-500/10 text-slate-600 border-slate-500/20',
+    },
   };
   const item = map[value] || map.pending;
   const Icon = item.icon;
@@ -313,6 +335,134 @@ const ScopeBadges = ({ rule }) => {
           {badge.label}
         </Badge>
       ))}
+    </div>
+  );
+};
+
+const ConfidenceBadge = ({ confidence }) => {
+  const value = Number(confidence);
+  const percent = Number.isFinite(value) ? Math.round(value * 100) : 0;
+
+  return (
+    <Badge variant="outline" className="rounded-lg border-emerald-500/20 bg-emerald-500/10 text-emerald-700">
+      {percent}%
+    </Badge>
+  );
+};
+
+const MergeRoleBadge = ({ role }) => {
+  if (!role) return null;
+
+  const isPrimary = role === 'primary';
+  return (
+    <Badge
+      variant="outline"
+      className={`rounded-lg ${
+        isPrimary
+          ? 'border-amber-500/20 bg-amber-500/10 text-amber-700'
+          : 'border-blue-500/20 bg-blue-500/10 text-blue-700'
+      }`}
+    >
+      {isPrimary && <Crown className="mr-1.5 h-3.5 w-3.5" />}
+      {isPrimary ? 'Primary' : 'Duplicate'}
+    </Badge>
+  );
+};
+
+const MergeRelationshipInfo = ({ rule, mergedFrom: mergedFromOverride, getRuleInfo, onScrollToRule }) => {
+  const [expanded, setExpanded] = useState(false);
+  const mergedFrom = Array.isArray(mergedFromOverride)
+    ? mergedFromOverride.filter(Boolean)
+    : Array.isArray(rule?.merged_from)
+      ? rule.merged_from.filter(Boolean)
+      : [];
+  const isMerged = String(rule?.status || '').toLowerCase() === 'merged' && rule?.merged_into;
+  const targetInfo = isMerged ? getRuleInfo(rule.merged_into) : null;
+
+  if (!isMerged && !mergedFrom.length) return null;
+
+  return (
+    <div className="space-y-2">
+      {isMerged && (
+        targetInfo.canScroll ? (
+          <button
+            type="button"
+            className="flex max-w-full items-start gap-2 rounded-2xl border border-slate-500/20 bg-slate-500/10 px-3 py-2 text-left text-xs font-bold text-slate-600 transition-colors hover:border-blue-500/30 hover:bg-blue-500/10 hover:text-blue-600 dark:text-slate-300"
+            onClick={() => onScrollToRule(targetInfo.id)}
+          >
+            <ArrowRight className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span className="min-w-0">
+              <span className="block truncate">Merged into: {targetInfo.name}</span>
+              {targetInfo.description && (
+                <span className="mt-0.5 block line-clamp-2 font-semibold text-muted-foreground">
+                  {targetInfo.description}
+                </span>
+              )}
+            </span>
+          </button>
+        ) : (
+          <div className="flex max-w-full items-start gap-2 rounded-2xl border border-slate-500/20 bg-slate-500/10 px-3 py-2 text-left text-xs font-bold text-slate-600 dark:text-slate-300">
+            <ArrowRight className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span className="min-w-0">
+              <span className="block truncate">Merged into: {targetInfo.name}</span>
+              {targetInfo.description && (
+                <span className="mt-0.5 block line-clamp-2 font-semibold text-muted-foreground">
+                  {targetInfo.description}
+                </span>
+              )}
+            </span>
+          </div>
+        )
+      )}
+
+      {mergedFrom.length > 0 && (
+        <Collapsible open={expanded} onOpenChange={setExpanded}>
+          <div className="space-y-2">
+            <CollapsibleTrigger className="inline-flex max-w-full items-center gap-2 rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1.5 text-left text-xs font-black text-blue-700 transition-colors hover:border-blue-500/30 hover:bg-blue-500/15 dark:text-blue-300">
+              <ClipboardList className="h-3.5 w-3.5 shrink-0" />
+              <span className="min-w-0 truncate">Merged {mergedFrom.length} {mergedFrom.length === 1 ? 'rule' : 'rules'}</span>
+              <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-1 rounded-2xl border border-blue-500/20 bg-blue-500/10 p-3 text-xs font-semibold text-muted-foreground">
+              {mergedFrom.map((sourceRef, index) => {
+                const sourceInfo = getRuleInfo(sourceRef);
+                const content = (
+                  <>
+                    <span className="mt-1 text-blue-500">-</span>
+                    <span className="min-w-0">
+                      <span className="block truncate font-black text-foreground/80">{sourceInfo.name}</span>
+                      {sourceInfo.description && (
+                        <span className="mt-0.5 block line-clamp-2 font-semibold text-muted-foreground">
+                          {sourceInfo.description}
+                        </span>
+                      )}
+                    </span>
+                  </>
+                );
+
+                if (!sourceInfo.canScroll) {
+                  return (
+                    <div key={`${sourceInfo.id}-${index}`} className="flex max-w-full items-start gap-2 text-left">
+                      {content}
+                    </div>
+                  );
+                }
+
+                return (
+                  <button
+                    type="button"
+                    key={`${sourceInfo.id}-${index}`}
+                    className="flex max-w-full items-start gap-2 text-left hover:text-blue-600"
+                    onClick={() => onScrollToRule(sourceInfo.id)}
+                  >
+                    {content}
+                  </button>
+                );
+              })}
+            </CollapsibleContent>
+          </div>
+        </Collapsible>
+      )}
     </div>
   );
 };
@@ -438,15 +588,16 @@ const MinimalRuleDetails = ({ rule, showSourceText, onToggleSourceText }) => (
 );
 
 const RuleDetailDialog = ({ open, rule, loading, onClose }) => {
-  const [showSourceText, setShowSourceText] = useState(false);
+  const [sourceTextState, setSourceTextState] = useState({ ruleId: null, visible: false });
   const statusValue = String(rule?.status || '').toLowerCase();
   const isPending = statusValue === 'pending';
   const isApproved = ['active', 'approved'].includes(statusValue);
   const title = isPending ? 'Minimal Rule Details' : 'Structured Rule Details';
-
-  useEffect(() => {
-    if (open) setShowSourceText(false);
-  }, [open, rule?.rule_id]);
+  const currentRuleId = getRuleId(rule);
+  const showSourceText = open && sourceTextState.ruleId === currentRuleId && sourceTextState.visible;
+  const toggleSourceText = () => {
+    setSourceTextState({ ruleId: currentRuleId, visible: !showSourceText });
+  };
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
@@ -471,7 +622,7 @@ const RuleDetailDialog = ({ open, rule, loading, onClose }) => {
                 <MinimalRuleDetails
                   rule={rule}
                   showSourceText={showSourceText}
-                  onToggleSourceText={() => setShowSourceText((value) => !value)}
+                  onToggleSourceText={toggleSourceText}
                 />
               ) : isApproved ? (
                 <Tabs defaultValue="minimal" className="space-y-6">
@@ -487,7 +638,7 @@ const RuleDetailDialog = ({ open, rule, loading, onClose }) => {
                     <MinimalRuleDetails
                       rule={rule}
                       showSourceText={showSourceText}
-                      onToggleSourceText={() => setShowSourceText((value) => !value)}
+                      onToggleSourceText={toggleSourceText}
                     />
                   </TabsContent>
                   <TabsContent value="detailed" className="grid gap-6 xl:grid-cols-2">
@@ -522,17 +673,50 @@ const RuleDetailDialog = ({ open, rule, loading, onClose }) => {
   );
 };
 
-const PendingRuleCard = ({ rule, selected, onToggle, onView, onEdit, onHistory, onApprove, onReject }) => (
-  <Card className="group rounded-[2rem] border-2 border-border/40 shadow-sm transition-all duration-300 hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5">
+const PendingRuleCard = ({
+  rule,
+  selected,
+  onToggle,
+  onView,
+  onEdit,
+  onHistory,
+  onApprove,
+  onReject,
+  mergeMode,
+  mergeSelected,
+  mergeRole,
+  onMergeToggle,
+  highlighted,
+  mergedFrom,
+  getRuleInfo,
+  onScrollToRule,
+}) => (
+  <Card
+    id={getRuleDomId(getRuleId(rule))}
+    className={`group rounded-[2rem] border-2 shadow-sm transition-all duration-300 hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5 ${
+      highlighted
+        ? 'border-blue-500/60 ring-4 ring-blue-500/20'
+        : mergeRole === 'primary'
+          ? 'border-amber-500/40 bg-amber-500/5'
+          : mergeSelected
+            ? 'border-blue-500/30 bg-blue-500/5'
+            : 'border-border/40'
+    }`}
+  >
     <CardContent className="p-6">
       <div className="flex items-start gap-4">
-        <RuleCheckbox checked={selected} onChange={onToggle} label={`Select ${rule.rule_name}`} />
+        <RuleCheckbox
+          checked={mergeMode ? mergeSelected : selected}
+          onChange={mergeMode ? onMergeToggle : onToggle}
+          label={`Select ${rule.rule_name} for ${mergeMode ? 'merge' : 'approval'}`}
+        />
         <div className="min-w-0 flex-1 space-y-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div className="min-w-0 space-y-2">
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="truncate text-lg font-black tracking-tight">{formatLabel(rule.rule_name || 'Untitled Rule')}</h3>
                 <StatusBadge status={rule.status || 'pending'} />
+                <MergeRoleBadge role={mergeRole} />
               </div>
               <div className="flex flex-wrap gap-2">
                 <Badge variant="warning" className="rounded-lg">{formatLabel(getRuleCategory(rule) || 'uncategorized')}</Badge>
@@ -571,6 +755,13 @@ const PendingRuleCard = ({ rule, selected, onToggle, onView, onEdit, onHistory, 
             </div>
           </div>
 
+          <MergeRelationshipInfo
+            rule={rule}
+            mergedFrom={mergedFrom}
+            getRuleInfo={getRuleInfo}
+            onScrollToRule={onScrollToRule}
+          />
+
           <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border/30 pt-4">
             <Button
               className="h-10 rounded-xl text-xs font-black uppercase tracking-widest"
@@ -594,63 +785,102 @@ const PendingRuleCard = ({ rule, selected, onToggle, onView, onEdit, onHistory, 
   </Card>
 );
 
-const ActiveRuleCard = ({ rule, onView, onEdit, onHistory, onDelete, deleting }) => (
-  <Card className="group rounded-[2rem] border-2 border-border/40 shadow-sm transition-all duration-300 hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5">
+const ActiveRuleCard = ({
+  rule,
+  onView,
+  onEdit,
+  onHistory,
+  onDelete,
+  deleting,
+  mergeMode,
+  mergeSelected,
+  mergeRole,
+  onMergeToggle,
+  highlighted,
+  mergedFrom,
+  getRuleInfo,
+  onScrollToRule,
+}) => (
+  <Card
+    id={getRuleDomId(getRuleId(rule))}
+    className={`group rounded-[2rem] border-2 shadow-sm transition-all duration-300 hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5 ${
+      highlighted
+        ? 'border-blue-500/60 ring-4 ring-blue-500/20'
+        : mergeRole === 'primary'
+          ? 'border-amber-500/40 bg-amber-500/5'
+          : mergeSelected
+            ? 'border-blue-500/30 bg-blue-500/5'
+            : 'border-border/40'
+    }`}
+  >
     <CardContent className="p-6">
-      <div className="min-w-0 flex-1 space-y-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div className="min-w-0 space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="truncate text-lg font-black tracking-tight">{formatLabel(rule.rule_name || 'Untitled Rule')}</h3>
-              <StatusBadge status={rule.status || 'active'} />
+      <div className="flex items-start gap-4">
+        {mergeMode && (
+          <RuleCheckbox checked={mergeSelected} onChange={onMergeToggle} label={`Select ${rule.rule_name} for merge`} />
+        )}
+        <div className="min-w-0 flex-1 space-y-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div className="min-w-0 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="truncate text-lg font-black tracking-tight">{formatLabel(rule.rule_name || 'Untitled Rule')}</h3>
+                <StatusBadge status={rule.status || 'active'} />
+                <MergeRoleBadge role={mergeRole} />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="warning" className="rounded-lg">{formatLabel(getRuleCategory(rule) || 'uncategorized')}</Badge>
+                <ProductLineBadges rule={rule} />
+              </div>
+              <ScopeBadges rule={rule} />
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="warning" className="rounded-lg">{formatLabel(getRuleCategory(rule) || 'uncategorized')}</Badge>
-              <ProductLineBadges rule={rule} />
+
+            <div className="flex items-center gap-2">
+              <Button variant="outline" className="h-10 rounded-xl text-xs font-black uppercase tracking-widest" onClick={onView}>
+                <Eye className="mr-2 h-4 w-4" />
+                View Details
+              </Button>
+              <Button type="button" variant="outline" size="icon" title="Edit rule" className="h-10 w-10 rounded-xl" onClick={onEdit}>
+                <Edit2 className="h-4 w-4" />
+              </Button>
+              <Button type="button" variant="outline" size="icon" title="Version history" className="h-10 w-10 rounded-xl" onClick={onHistory}>
+                <History className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                title="Delete rule"
+                disabled={deleting}
+                className="h-10 w-10 rounded-xl hover:border-red-500/20 hover:bg-red-500/10 hover:text-red-500"
+                onClick={onDelete}
+              >
+                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              </Button>
             </div>
-            <ScopeBadges rule={rule} />
           </div>
 
-          <div className="flex items-center gap-2">
-            <Button variant="outline" className="h-10 rounded-xl text-xs font-black uppercase tracking-widest" onClick={onView}>
-              <Eye className="mr-2 h-4 w-4" />
-              View Details
-            </Button>
-            <Button type="button" variant="outline" size="icon" title="Edit rule" className="h-10 w-10 rounded-xl" onClick={onEdit}>
-              <Edit2 className="h-4 w-4" />
-            </Button>
-            <Button type="button" variant="outline" size="icon" title="Version history" className="h-10 w-10 rounded-xl" onClick={onHistory}>
-              <History className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              title="Delete rule"
-              disabled={deleting}
-              className="h-10 w-10 rounded-xl hover:border-red-500/20 hover:bg-red-500/10 hover:text-red-500"
-              onClick={onDelete}
-            >
-              {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-            </Button>
-          </div>
-        </div>
+          <p className="rounded-2xl border border-border/40 bg-muted/20 p-4 text-sm font-semibold leading-relaxed text-foreground/80">
+            {rule.rule || 'No rule text provided.'}
+          </p>
 
-        <p className="rounded-2xl border border-border/40 bg-muted/20 p-4 text-sm font-semibold leading-relaxed text-foreground/80">
-          {rule.rule || 'No rule text provided.'}
-        </p>
+          <div className="grid gap-4 md:grid-cols-[1fr_220px]">
+            <div className="space-y-2">
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Matched HCPCS</p>
+              <HcpcsList codes={rule.matched_hcpcs} />
+            </div>
+            <div className="space-y-2">
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Source Document</p>
+              <p className="truncate font-mono text-xs font-bold text-muted-foreground" title={getSourceDocument(rule)}>
+                {getSourceDocument(rule)}
+              </p>
+            </div>
+          </div>
 
-        <div className="grid gap-4 md:grid-cols-[1fr_220px]">
-          <div className="space-y-2">
-            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Matched HCPCS</p>
-            <HcpcsList codes={rule.matched_hcpcs} />
-          </div>
-          <div className="space-y-2">
-            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Source Document</p>
-            <p className="truncate font-mono text-xs font-bold text-muted-foreground" title={getSourceDocument(rule)}>
-              {getSourceDocument(rule)}
-            </p>
-          </div>
+          <MergeRelationshipInfo
+            rule={rule}
+            mergedFrom={mergedFrom}
+            getRuleInfo={getRuleInfo}
+            onScrollToRule={onScrollToRule}
+          />
         </div>
       </div>
     </CardContent>
@@ -904,6 +1134,128 @@ const VersionHistoryDialog = ({ open, rule, versions, loading, onClose, onRestor
   </Dialog>
 );
 
+const ActiveMergeSuggestions = ({
+  suggestions,
+  loading,
+  open,
+  rulesById,
+  onToggle,
+  onRefresh,
+  onAccept,
+  onReject,
+}) => {
+  if (!suggestions.length) return null;
+
+  return (
+    <Card className="overflow-hidden rounded-2xl border-2 border-border/40 shadow-sm">
+      <CardContent className="p-0">
+        <div className="flex flex-col gap-3 border-b border-border/30 p-4 md:flex-row md:items-center md:justify-between">
+          <Button
+            type="button"
+            variant="ghost"
+            className="h-auto justify-start rounded-xl px-0 text-sm font-black uppercase tracking-widest hover:bg-transparent"
+            onClick={onToggle}
+          >
+            {open ? <ChevronUp className="mr-2 h-4 w-4" /> : <ChevronDown className="mr-2 h-4 w-4" />}
+            AI Merge Suggestions ({suggestions.length})
+          </Button>
+          <Button type="button" variant="outline" size="icon" title="Refresh suggestions" className="h-10 w-10 rounded-xl" onClick={onRefresh} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
+        </div>
+
+        {open && (
+          <div className="space-y-3 p-4">
+            {loading ? (
+              <div className="flex items-center justify-center gap-3 py-12 text-sm font-black text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                Loading merge suggestions...
+              </div>
+            ) : (
+              suggestions.map((suggestion) => {
+                const duplicateIds = suggestion.duplicate_rule_ids || [];
+                const primaryName = rulesById.get(suggestion.primary_rule_id)?.rule_name || suggestion.primary_rule_id;
+
+                return (
+                  <div key={suggestion.suggestion_id} className="rounded-2xl border border-border/40 bg-muted/10 p-4">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                      <div className="min-w-0 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="break-words text-sm font-black">
+                            Merge {duplicateIds.length} rule(s) into: {formatLabel(primaryName)}
+                          </p>
+                          <ConfidenceBadge confidence={suggestion.confidence} />
+                        </div>
+                        <p className="text-sm font-semibold leading-relaxed text-muted-foreground">
+                          Reason: {suggestion.reason || '-'}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Button className="h-10 rounded-xl text-xs font-black uppercase tracking-widest" onClick={() => onAccept(suggestion.suggestion_id)}>
+                          Accept
+                        </Button>
+                        <Button variant="outline" className="h-10 rounded-xl text-xs font-black uppercase tracking-widest" onClick={() => onReject(suggestion.suggestion_id)}>
+                          Reject
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
+const AnalyzeResultPanel = ({ analyzeResult, onAccept, onDismiss }) => {
+  if (!analyzeResult) return null;
+
+  if (analyzeResult.has_suggestions === false) {
+    return (
+      <Card className="rounded-2xl border-2 border-border/40 shadow-2xl">
+        <CardContent className="p-4 text-sm font-black text-muted-foreground">
+          Gemini found no strong merge candidates among the selected rules
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {(analyzeResult.suggestions || []).map((suggestion, index) => (
+        <Card key={suggestion.suggestion_id || `${suggestion.primary_rule_id}-${index}`} className="rounded-2xl border-2 border-border/40 shadow-2xl">
+          <CardContent className="space-y-3 p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-black">Primary: {formatLabel(suggestion.primary_rule_name || suggestion.primary_rule_id)}</p>
+              <ConfidenceBadge confidence={suggestion.confidence} />
+            </div>
+            <p className="text-sm font-semibold text-muted-foreground">
+              Absorbs: {(suggestion.duplicate_rule_names || suggestion.duplicate_rule_ids || []).map(formatLabel).join(', ') || '-'}
+            </p>
+            <p className="text-sm font-semibold leading-relaxed text-muted-foreground">
+              Reason: {suggestion.reason || '-'}
+            </p>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                className="h-10 rounded-xl text-xs font-black uppercase tracking-widest"
+                onClick={() => onAccept(suggestion.primary_rule_id, suggestion.duplicate_rule_ids || [])}
+              >
+                Accept Suggestion
+              </Button>
+              <Button variant="outline" className="h-10 rounded-xl text-xs font-black uppercase tracking-widest" onClick={onDismiss}>
+                Dismiss
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+};
+
 const KnowledgeBase = () => {
   const { user } = useSelector((state) => state.auth);
   const userId = user?.user_id || user?.id || '';
@@ -912,7 +1264,8 @@ const KnowledgeBase = () => {
   const [activeTab, setActiveTab] = useState('pending');
   const [pendingRules, setPendingRules] = useState([]);
   const [activeRules, setActiveRules] = useState([]);
-  const [loading, setLoading] = useState({ pending: true, active: true });
+  const [mergedRules, setMergedRules] = useState([]);
+  const [loading, setLoading] = useState({ pending: true, active: true, merged: true });
   const [categoryFilter, setCategoryFilter] = useState(ALL_FILTER);
   const [productLineFilter, setProductLineFilter] = useState(ALL_FILTER);
   const [sourceDocumentFilter, setSourceDocumentFilter] = useState(ALL_FILTER);
@@ -924,6 +1277,16 @@ const KnowledgeBase = () => {
   const [detailState, setDetailState] = useState({ open: false, rule: null, loading: false });
   const [editState, setEditState] = useState({ open: false, rule: null, saving: false });
   const [versionState, setVersionState] = useState({ open: false, rule: null, versions: [], loading: false });
+  const [mergeSuggestions, setMergeSuggestions] = useState([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [analyzeResult, setAnalyzeResult] = useState(null);
+  const [analyzingRules, setAnalyzingRules] = useState(false);
+  const [manualMergeMode, setManualMergeMode] = useState(false);
+  const [manualMergeSelections, setManualMergeSelections] = useState([]);
+  const [primaryRuleId, setPrimaryRuleId] = useState(null);
+  const [executingMerge, setExecutingMerge] = useState(false);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [highlightedRuleId, setHighlightedRuleId] = useState(null);
 
   const diseaseKey = disease.trim().toLowerCase() || DEFAULT_DISEASE;
 
@@ -946,6 +1309,7 @@ const KnowledgeBase = () => {
       const rules = normalizeRules(data).map((rule) => ({ ...rule, status: rule.status || status }));
       if (status === 'pending') setPendingRules(rules);
       if (status === 'active') setActiveRules(rules);
+      if (status === 'merged') setMergedRules(rules);
     } catch (error) {
       toast.error(error.message || `Failed to load ${status} rules`);
     } finally {
@@ -957,34 +1321,54 @@ const KnowledgeBase = () => {
     await Promise.all([
       fetchRules('pending', { silent }),
       fetchRules('active', { silent }),
+      fetchRules('merged', { silent }),
     ]);
   }, [fetchRules]);
+
+  const fetchMergeSuggestions = useCallback(async () => {
+    if (!userId) return;
+
+    setLoadingSuggestions(true);
+    try {
+      const res = await fetch(`${BASE_URL}/admin/rules/${diseaseKey}/merge-suggestions`, {
+        headers: { 'x-user-id': userId },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) setMergeSuggestions(data.suggestions || []);
+    } catch {
+      toast.error('Failed to load merge suggestions');
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  }, [diseaseKey, userId]);
 
   useEffect(() => {
     setSelectedRuleIds([]);
     refreshAll();
-  }, [refreshAll]);
+    if (activeTab === 'active') fetchMergeSuggestions();
+  }, [activeTab, fetchMergeSuggestions, refreshAll]);
 
   const stats = useMemo(() => ({
     pending: pendingRules.length,
     active: activeRules.length,
-    total: pendingRules.length + activeRules.length,
-    chunks: new Set([...pendingRules, ...activeRules].flatMap((rule) => rule.linked_chunk_ids || [])).size,
-  }), [activeRules, pendingRules]);
+    total: pendingRules.length + activeRules.length + mergedRules.length,
+    chunks: new Set([...pendingRules, ...activeRules, ...mergedRules].flatMap((rule) => rule.linked_chunk_ids || [])).size,
+  }), [activeRules, mergedRules, pendingRules]);
 
-  const allRules = useMemo(() => [...pendingRules, ...activeRules], [activeRules, pendingRules]);
+  const filterableRules = useMemo(() => [...pendingRules, ...activeRules], [activeRules, pendingRules]);
+  const allRules = useMemo(() => [...filterableRules, ...mergedRules], [filterableRules, mergedRules]);
 
   const categoryOptions = useMemo(() => (
-    buildFilterOptions(allRules.map(getRuleCategory).filter(Boolean))
-  ), [allRules]);
+    buildFilterOptions(filterableRules.map(getRuleCategory).filter(Boolean))
+  ), [filterableRules]);
 
   const productLineOptions = useMemo(() => (
-    buildFilterOptions(allRules.flatMap(getMatchedProductLines).filter(Boolean))
-  ), [allRules]);
+    buildFilterOptions(filterableRules.flatMap(getMatchedProductLines).filter(Boolean))
+  ), [filterableRules]);
 
   const sourceDocumentOptions = useMemo(() => (
-    buildFilterOptions(allRules.map(getSourceDocumentName).filter((value) => value && value !== '-'))
-  ), [allRules]);
+    buildFilterOptions(filterableRules.map(getSourceDocumentName).filter((value) => value && value !== '-'))
+  ), [filterableRules]);
 
   const ruleMatchesFilters = useCallback((rule) => {
     const categoryKey = normalizeFilterValue(getRuleCategory(rule));
@@ -1110,6 +1494,95 @@ const KnowledgeBase = () => {
     });
   };
 
+  const acceptSuggestion = async (suggestionId) => {
+    try {
+      const res = await fetch(`${BASE_URL}/admin/rules/${diseaseKey}/merge-suggestions/accept`, {
+        method: 'POST',
+        headers: { 'x-user-id': userId, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, suggestion_id: suggestionId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || 'Accept failed');
+      toast.success('Merged successfully');
+      setMergeSuggestions((prev) => prev.filter((s) => s.suggestion_id !== suggestionId));
+      await refreshAll({ silent: true });
+      await fetchMergeSuggestions();
+    } catch (e) {
+      toast.error(e.message || 'Accept failed');
+    }
+  };
+
+  const rejectSuggestion = async (suggestionId) => {
+    try {
+      const res = await fetch(`${BASE_URL}/admin/rules/${diseaseKey}/merge-suggestions/reject`, {
+        method: 'POST',
+        headers: { 'x-user-id': userId, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, suggestion_id: suggestionId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || 'Reject failed');
+      toast.success('Suggestion dismissed');
+      setMergeSuggestions((prev) => prev.filter((s) => s.suggestion_id !== suggestionId));
+    } catch (e) {
+      toast.error(e.message || 'Reject failed');
+    }
+  };
+
+  const analyzeSelectedRules = async (ruleIds) => {
+    if (ruleIds.length < 2) {
+      toast.error('Select at least 2 rules to analyze');
+      return;
+    }
+    setAnalyzingRules(true);
+    setAnalyzeResult(null);
+    try {
+      const res = await fetch(`${BASE_URL}/admin/rules/${diseaseKey}/merge-suggestions/analyze`, {
+        method: 'POST',
+        headers: { 'x-user-id': userId, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, rule_ids: ruleIds }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || 'Analysis failed');
+      setAnalyzeResult(data);
+    } catch (e) {
+      toast.error(e.message || 'Analysis failed');
+    } finally {
+      setAnalyzingRules(false);
+    }
+  };
+
+  const executeManualMerge = async (primaryId, duplicateIds) => {
+    if (!primaryId || !duplicateIds.length) {
+      toast.error('Select a primary rule and at least one duplicate');
+      return;
+    }
+    setExecutingMerge(true);
+    try {
+      const res = await fetch(`${BASE_URL}/admin/rules/${diseaseKey}/manual-merge`, {
+        method: 'POST',
+        headers: { 'x-user-id': userId, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: userId,
+          primary_rule_id: primaryId,
+          duplicate_rule_ids: duplicateIds,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || 'Merge failed');
+      toast.success(`Merged ${duplicateIds.length} rule(s) into primary`);
+      setManualMergeMode(false);
+      setManualMergeSelections([]);
+      setPrimaryRuleId(null);
+      setAnalyzeResult(null);
+      await refreshAll({ silent: true });
+      await fetchMergeSuggestions();
+    } catch (e) {
+      toast.error(e.message || 'Merge failed');
+    } finally {
+      setExecutingMerge(false);
+    }
+  };
+
   const approveSelectedRules = async () => {
     if (!selectedRuleIds.length) return;
 
@@ -1141,6 +1614,7 @@ const KnowledgeBase = () => {
       setSelectedRuleIds([]);
       setActiveTab('active');
       await refreshAll({ silent: true });
+      await fetchMergeSuggestions();
     } catch (error) {
       toast.error(error.message || 'Failed to approve rules', { id: toastId });
       await fetchRules('pending', { silent: true });
@@ -1209,6 +1683,7 @@ const KnowledgeBase = () => {
       toast.success('Rule deleted');
       setPendingRules((previous) => previous.filter((item) => getRuleId(item) !== ruleId));
       setActiveRules((previous) => previous.filter((item) => getRuleId(item) !== ruleId));
+      setMergedRules((previous) => previous.filter((item) => getRuleId(item) !== ruleId));
       setSelectedRuleIds((previous) => previous.filter((id) => id !== ruleId));
     } catch (error) {
       toast.error(error.message || 'Failed to delete rule');
@@ -1222,6 +1697,146 @@ const KnowledgeBase = () => {
   const allVisibleSelected = visiblePendingIds.length > 0 && visiblePendingIds.every((id) => selectedRuleIds.includes(id));
   const isApproving = bulkLoading === 'approve';
   const isRejecting = bulkLoading === 'reject';
+  const rulesById = useMemo(() => allRules.reduce((map, rule) => {
+    const ruleId = getRuleId(rule);
+    if (!ruleId) return map;
+    map.set(ruleId, rule);
+    map.set(normalizeRuleId(ruleId), rule);
+    return map;
+  }, new Map()), [allRules]);
+  const getRuleById = useCallback((ruleId) => (
+    rulesById.get(ruleId) || rulesById.get(normalizeRuleId(ruleId))
+  ), [rulesById]);
+
+  const mergedRulesByTargetId = useMemo(() => mergedRules.reduce((map, mergedRule) => {
+    const targetId = getMergeRefId(mergedRule.merged_into);
+    if (!targetId) return map;
+    const key = normalizeRuleId(targetId);
+    map.set(key, [...(map.get(key) || []), mergedRule]);
+    return map;
+  }, new Map()), [mergedRules]);
+
+  const getMergedSourcesForRule = useCallback((rule) => {
+    const explicitSources = Array.isArray(rule?.merged_from) ? rule.merged_from.filter(Boolean) : [];
+    const derivedSources = mergedRulesByTargetId.get(normalizeRuleId(getRuleId(rule))) || [];
+    const seen = new Set();
+
+    return [...explicitSources, ...derivedSources].filter((sourceRef, index) => {
+      const sourceId = normalizeRuleId(getMergeRefId(sourceRef));
+      const key = sourceId || `embedded-${index}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [mergedRulesByTargetId]);
+
+  const primaryRule = primaryRuleId ? getRuleById(primaryRuleId) : null;
+  const duplicateRuleIds = manualMergeSelections.filter((id) => id !== primaryRuleId);
+  const selectedMergeIds = primaryRuleId ? [primaryRuleId, ...duplicateRuleIds] : duplicateRuleIds;
+
+  const getRelationshipRuleInfo = useCallback((ruleRef) => {
+    const ruleId = getMergeRefId(ruleRef);
+    const embeddedRule = ruleRef && typeof ruleRef === 'object' ? ruleRef : null;
+    const loadedRule = getRuleById(ruleId);
+    const sourceRule = loadedRule || embeddedRule || {};
+    const loadedStatus = String(loadedRule?.status || '').toLowerCase();
+    const name = (
+      sourceRule.rule_name ||
+      sourceRule.source_rule_name ||
+      sourceRule.target_rule_name ||
+      sourceRule.merged_rule_name ||
+      sourceRule.name ||
+      sourceRule.title
+    );
+    const description = (
+      sourceRule.rule ||
+      sourceRule.rule_text ||
+      sourceRule.source_rule_text ||
+      sourceRule.target_rule_text ||
+      sourceRule.description ||
+      sourceRule.rule_description ||
+      sourceRule.source_text
+    );
+
+    return {
+      id: ruleId || name || 'unknown-rule',
+      name: formatLabel(name || 'Merged rule'),
+      description: description || 'Details unavailable in the current rule list.',
+      canScroll: Boolean(ruleId && loadedRule && loadedStatus !== 'merged'),
+    };
+  }, [getRuleById]);
+
+  const scrollToRule = useCallback((ruleId) => {
+    if (!ruleId) return;
+
+    const targetRule = getRuleById(ruleId);
+    if (targetRule) {
+      const targetStatus = String(targetRule.status || '').toLowerCase();
+      setActiveTab(targetStatus === 'pending' ? 'pending' : 'active');
+    }
+
+    window.setTimeout(() => {
+      const element = document.getElementById(getRuleDomId(ruleId));
+      if (!element) {
+        toast.info('Target rule is not visible with the current filters');
+        return;
+      }
+
+      setHighlightedRuleId(ruleId);
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      window.setTimeout(() => setHighlightedRuleId((current) => (
+        current === ruleId ? null : current
+      )), 1800);
+    }, 120);
+  }, [getRuleById]);
+
+  const resetMergeMode = () => {
+    setManualMergeMode(false);
+    setManualMergeSelections([]);
+    setPrimaryRuleId(null);
+    setAnalyzeResult(null);
+  };
+
+  const toggleMergeMode = () => {
+    setManualMergeMode((previous) => {
+      const next = !previous;
+      setManualMergeSelections([]);
+      setPrimaryRuleId(null);
+      setAnalyzeResult(null);
+      return next;
+    });
+  };
+
+  const toggleManualMergeSelection = (ruleId) => {
+    if (!ruleId) return;
+    setAnalyzeResult(null);
+
+    if (ruleId === primaryRuleId) {
+      const [nextPrimary, ...remainingDuplicates] = duplicateRuleIds;
+      setPrimaryRuleId(nextPrimary || null);
+      setManualMergeSelections(remainingDuplicates);
+      return;
+    }
+
+    if (duplicateRuleIds.includes(ruleId)) {
+      setManualMergeSelections((previous) => previous.filter((id) => id !== ruleId));
+      return;
+    }
+
+    if (!primaryRuleId) {
+      setPrimaryRuleId(ruleId);
+      setManualMergeSelections([]);
+      return;
+    }
+
+    setManualMergeSelections((previous) => [...new Set([...previous.filter((id) => id !== primaryRuleId), ruleId])]);
+  };
+
+  const getMergeRole = (ruleId) => {
+    if (ruleId === primaryRuleId) return 'primary';
+    if (duplicateRuleIds.includes(ruleId)) return 'duplicate';
+    return '';
+  };
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 pb-12">
@@ -1246,8 +1861,8 @@ const KnowledgeBase = () => {
             className="h-11 w-full rounded-2xl border-2 border-border/40 bg-card px-4 text-sm font-black sm:w-48"
             placeholder="Disease"
           />
-          <Button variant="outline" className="h-11 rounded-2xl font-black" onClick={() => refreshAll()} disabled={loading.pending || loading.active}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${(loading.pending || loading.active) ? 'animate-spin' : ''}`} />
+          <Button variant="outline" className="h-11 rounded-2xl font-black" onClick={() => refreshAll()} disabled={loading.pending || loading.active || loading.merged}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${(loading.pending || loading.active || loading.merged) ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
         </div>
@@ -1301,6 +1916,14 @@ const KnowledgeBase = () => {
 
           {activeTab === 'pending' && (
             <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant={manualMergeMode ? 'default' : 'outline'}
+                className="h-10 rounded-xl text-xs font-black uppercase tracking-widest"
+                onClick={toggleMergeMode}
+              >
+                <GitMerge className="mr-2 h-4 w-4" />
+                {manualMergeMode ? 'Exit Merge Mode' : 'Merge Mode'}
+              </Button>
               <Button variant="outline" className="h-10 rounded-xl text-xs font-black uppercase tracking-widest" onClick={toggleAllPending} disabled={!visiblePendingIds.length}>
                 {allVisibleSelected ? 'Clear Visible' : 'Select Visible'}
               </Button>
@@ -1320,6 +1943,19 @@ const KnowledgeBase = () => {
               >
                 {isRejecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
                 Reject Selected
+              </Button>
+            </div>
+          )}
+
+          {activeTab === 'active' && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant={manualMergeMode ? 'default' : 'outline'}
+                className="h-10 rounded-xl text-xs font-black uppercase tracking-widest"
+                onClick={toggleMergeMode}
+              >
+                <GitMerge className="mr-2 h-4 w-4" />
+                {manualMergeMode ? 'Exit Merge Mode' : 'Merge Mode'}
               </Button>
             </div>
           )}
@@ -1415,6 +2051,14 @@ const KnowledgeBase = () => {
                   rule={rule}
                   selected={selectedRuleIds.includes(ruleId)}
                   onToggle={() => toggleRuleSelection(ruleId)}
+                  mergeMode={manualMergeMode}
+                  mergeSelected={selectedMergeIds.includes(ruleId)}
+                  mergeRole={getMergeRole(ruleId)}
+                  onMergeToggle={() => toggleManualMergeSelection(ruleId)}
+                  highlighted={highlightedRuleId === ruleId}
+                  mergedFrom={rule.merged_from}
+                  getRuleInfo={getRelationshipRuleInfo}
+                  onScrollToRule={scrollToRule}
                   onView={() => openRuleDetail(rule)}
                   onEdit={() => openEditRule(rule)}
                   onHistory={() => openVersionHistory(rule)}
@@ -1438,7 +2082,18 @@ const KnowledgeBase = () => {
         </TabsContent>
 
         <TabsContent value="active" className="space-y-4">
-          {loading.active ? (
+          <ActiveMergeSuggestions
+            suggestions={mergeSuggestions}
+            loading={loadingSuggestions}
+            open={suggestionsOpen}
+            rulesById={rulesById}
+            onToggle={() => setSuggestionsOpen((previous) => !previous)}
+            onRefresh={fetchMergeSuggestions}
+            onAccept={acceptSuggestion}
+            onReject={rejectSuggestion}
+          />
+
+          {(loading.active || loading.merged) ? (
             <div className="flex items-center justify-center gap-3 rounded-[2rem] border-2 border-dashed border-border/50 py-28 text-sm font-black text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
               Loading active rules...
@@ -1451,6 +2106,14 @@ const KnowledgeBase = () => {
                   key={ruleId}
                   rule={rule}
                   deleting={deletingId === ruleId}
+                  mergeMode={manualMergeMode}
+                  mergeSelected={selectedMergeIds.includes(ruleId)}
+                  mergeRole={getMergeRole(ruleId)}
+                  onMergeToggle={() => toggleManualMergeSelection(ruleId)}
+                  highlighted={highlightedRuleId === ruleId}
+                  mergedFrom={getMergedSourcesForRule(rule)}
+                  getRuleInfo={getRelationshipRuleInfo}
+                  onScrollToRule={scrollToRule}
                   onView={() => openRuleDetail(rule)}
                   onEdit={(event) => {
                     event?.stopPropagation?.();
@@ -1472,6 +2135,54 @@ const KnowledgeBase = () => {
           )}
         </TabsContent>
       </Tabs>
+
+      {manualMergeMode && (
+        <div className="sticky bottom-4 z-50 w-full min-w-0 overflow-hidden rounded-[1.75rem] border border-border/50 bg-background/95 p-3 shadow-2xl backdrop-blur sm:p-4">
+          <div className="mx-auto w-full max-w-screen-2xl space-y-3">
+            <AnalyzeResultPanel
+              analyzeResult={analyzeResult}
+              onAccept={executeManualMerge}
+              onDismiss={() => setAnalyzeResult(null)}
+            />
+            <div className="grid w-full min-w-0 max-w-full grid-cols-1 gap-3 overflow-hidden rounded-2xl border border-border/50 bg-card p-3 sm:p-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,auto)] xl:items-center">
+              <div className="min-w-0 space-y-1">
+                <p className="truncate text-sm font-black">
+                  Primary: {primaryRule ? formatLabel(primaryRule.rule_name || primaryRuleId) : 'Select a primary rule'}
+                </p>
+                <p className="text-xs font-bold text-muted-foreground">
+                  {duplicateRuleIds.length} duplicates selected
+                </p>
+              </div>
+              <div className="flex w-full min-w-0 max-w-full flex-wrap items-center justify-start gap-2 sm:justify-end xl:w-auto">
+                <Button
+                  variant="outline"
+                  className="h-10 min-w-0 flex-1 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-black uppercase tracking-widest sm:flex-none sm:px-4 md:text-sm"
+                  disabled={analyzingRules || selectedMergeIds.length < 2}
+                  onClick={() => analyzeSelectedRules(selectedMergeIds)}
+                >
+                  {analyzingRules ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+                  Get AI Suggestion
+                </Button>
+                <Button
+                  className="h-10 min-w-0 flex-1 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-black uppercase tracking-widest sm:flex-none sm:px-4 md:text-sm"
+                  disabled={executingMerge || !primaryRuleId || !duplicateRuleIds.length}
+                  onClick={() => executeManualMerge(primaryRuleId, duplicateRuleIds)}
+                >
+                  {executingMerge ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GitMerge className="mr-2 h-4 w-4" />}
+                  Merge Now
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-10 min-w-0 flex-1 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-black uppercase tracking-widest sm:flex-none sm:px-4 md:text-sm"
+                  onClick={resetMergeMode}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <RuleDetailDialog
         open={detailState.open}
