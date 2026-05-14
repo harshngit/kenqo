@@ -18,6 +18,7 @@ import {
   UserPlus,
   Shield,
   ChevronRight,
+  ChevronDown,
   MessageSquare,
   ExternalLink,
   Upload,
@@ -27,6 +28,10 @@ import {
   Pill,
   NotebookPen,
   Package,
+  XCircle,
+  BarChart3,
+  ClipboardList,
+  AlertTriangle,
 } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
@@ -65,6 +70,11 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '../../../components/ui/accordion';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '../../../components/ui/collapsible';
 
 import {
   getOrderStatus,
@@ -73,18 +83,24 @@ import {
   listOrders,
   addOrderDocuments,
   approveOrder,
+  proceedToValidation,
   deleteOrder,
   submitCSRDecision,
   editField,
   resolveConflict,
+  resolveConflictsBatch,
   replaceDocument,
   undoAction,
   deleteDocument,
   listPatients,
   getPatientOrders,
   verifyEligibility,
+  checkEligibility,
+  getEligibilityHistory,
   viewDocument,
   getOrderSummaryHistory,
+  getValidationResults,
+  revalidateFields,
 } from '../../../services/intakeApi';
 
 // â”€â”€â”€ REUSABLE COMPONENTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -238,17 +254,12 @@ const DOC_TYPES = [
   'Measurement Form'
 ];
 
-const TERMINAL_STATUSES = ['extracted', 'complete', 'failed', 'awaiting_csr_decision', 'incomplete'];
+const TERMINAL_STATUSES = ['extracted', 'complete', 'failed', 'awaiting_csr_decision', 'incomplete', 'validated', 'validated_with_warning', 'validation_failed'];
 
 const shouldHaltPolling = (data) =>
   TERMINAL_STATUSES.includes(data?.status) || data?.awaiting_csr === true;
 
-const shouldLoadFields = (data) =>
-  data?.status === 'extracted' ||
-  data?.status === 'complete' ||
-  data?.status === 'awaiting_csr_decision' ||
-  data?.status === 'incomplete' ||
-  data?.awaiting_csr === true;
+const shouldLoadFields = (data) => true;
 
 const getIdentityReviewPayload = (order) =>
   order?.identity_review_payload || order?.identityReviewPayload || {};
@@ -450,8 +461,18 @@ const getNormalizedFieldsMap = (payload) => {
 };
 
 const getFieldsSummary = (payload, fieldMap) => {
-  if (payload?.summary) return payload.summary;
-  if (payload?.data?.summary) return payload.data.summary;
+  const summary = payload?.summary || payload?.data?.summary || payload;
+  const missing = summary?.missing;
+  
+  if (summary && (summary.green || summary.yellow || summary.red || missing)) {
+    return {
+      total: summary.total ?? Object.values(fieldMap || {}).length,
+      green: missing?.green?.count ?? summary.green?.count ?? (typeof summary.green === 'number' ? summary.green : 0),
+      yellow: missing?.yellow?.count ?? summary.yellow?.count ?? (typeof summary.yellow === 'number' ? summary.yellow : 0),
+      red: missing?.red?.count ?? summary.red?.count ?? (typeof summary.red === 'number' ? summary.red : 0),
+      conflicts: missing?.conflicts?.count ?? summary.conflicts?.count ?? (typeof summary.conflicts === 'number' ? summary.conflicts : 0),
+    };
+  }
 
   const values = Object.values(fieldMap || {});
   if (!values.length) return { total: 0, green: 0, yellow: 0, red: 0, conflicts: 0 };
@@ -574,7 +595,10 @@ const inferSemanticAgentForField = (fieldName, field = {}) => {
   return 'other';
 };
 
-const formatFieldName = (name) => name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+const formatFieldName = (name) => {
+  if (!name || typeof name !== 'string') return '';
+  return name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+};
 
 const getHistoryLabel = (triggerAction) => {
   if (!triggerAction) return 'Update';
@@ -610,6 +634,36 @@ const OrderDetail = () => {
   const [isLoadingPatientOrders, setIsLoadingPatientOrders] = useState(false);
   const [isLoadingSummaryHistory, setIsLoadingSummaryHistory] = useState(false);
 
+  // New Validation Dialog States
+  const [showIncompleteDialog, setShowIncompleteDialog] = useState(false);
+  const [validationReport, setValidationReport] = useState(null);
+  const [isLoadingReport, setIsLoadingReport] = useState(false);
+  const [showReportDialog, setShowReportDialog] = useState(false);
+  const [incompleteDialogData, setIncompleteDialogData] = useState({
+    conflicts_count: 0,
+    critical_missing_count: 0,
+    moderate_missing_count: 0,
+    optional_missing_count: 0,
+    conflicts: [],
+    critical_missing: [],
+    moderate_missing: [],
+    optional_missing: []
+  });
+  const [dialogChoice, setDialogChoice] = useState('override'); // 'override' or 'resolve'
+  const [showResolveFields, setShowResolveFields] = useState(false);
+  const [globalReason, setGlobalReason] = useState('');
+    const [isApplyingAll, setIsApplyingAll] = useState(false);
+    const [fieldDrafts, setFieldDrafts] = useState({});
+    const [isApplyingBatch, setIsApplyingBatch] = useState({
+      critical: false,
+      moderate: false,
+      optional: false
+    });
+
+    const handleFieldDraftChange = (fieldName, value) => {
+      setFieldDrafts(prev => ({ ...prev, [fieldName]: value }));
+    };
+
   // Document accordion & viewer state
   const [openDocs, setOpenDocs] = useState({});
   const [showPreviousVersions, setShowPreviousVersions] = useState(false);
@@ -620,7 +674,6 @@ const OrderDetail = () => {
   const [editModal, setEditModal] = useState({ open: false, fieldName: '', currentValue: '', newValue: '', reason: '' });
   const [conflictModal, setConflictModal] = useState({ open: false, field: null, choice: '', manualValue: '', reason: '' });
   const [uploadModal, setUploadModal] = useState({ open: false, files: [] });
-  const [approveModal, setApproveModal] = useState({ open: false, mode: 'confirm', missingFields: [], conflictCount: 0 });
   const [undoApprovalOpen, setUndoApprovalOpen] = useState(false);
 
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
@@ -631,6 +684,12 @@ const OrderDetail = () => {
   const [isUndoingOrderApproval, setIsUndoingOrderApproval] = useState(false);
   const [replacingDocId, setReplacingDocId] = useState('');
   const [isVerifyingEligibility, setIsVerifyingEligibility] = useState(false);
+  const [eligibilityResult, setEligibilityResult] = useState(null);
+  const [eligibilityData, setEligibilityData] = useState(null);
+  const [isCheckingEligibility, setIsCheckingEligibility] = useState(false);
+  const [showEligibilityDialog, setShowEligibilityDialog] = useState(false);
+  const [showEligibilityHistory, setShowEligibilityHistory] = useState(false);
+  const [eligibilityHistory, setEligibilityHistory] = useState([]);
   const [docTypeChoice, setDocTypeChoice] = useState('accept_classifier');
 
   const fetchFields = useCallback(async () => {
@@ -666,7 +725,8 @@ const OrderDetail = () => {
     setIsLoadingSummaryHistory(true);
     try {
       const data = await getOrderSummaryHistory(orderId);
-      setSummaryHistory(data.history || []);
+      const sortedHistory = (data.history || []).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+      setSummaryHistory(sortedHistory);
     } catch (e) {
       console.error('Failed to load summary history:', e);
     } finally {
@@ -677,7 +737,13 @@ const OrderDetail = () => {
   const fetchStatus = useCallback(async () => {
     try {
       const data = await getOrderStatus(orderId);
+      console.log('=== FETCH STATUS DEBUG ==='); 
+      console.log('Full status response:', data); 
+      console.log('data.eligibility:', data.eligibility); 
+      console.log('Setting eligibilityData to:', data.eligibility || null); 
+      console.log('=========================='); 
       setOrder(data);
+      setEligibilityData(data.eligibility || null);
       if (shouldHaltPolling(data)) {
         pollingStoppedRef.current = true;
         if (pollingRef.current) {
@@ -1002,35 +1068,6 @@ const OrderDetail = () => {
     }
   };
 
-  const openApproveModal = () => {
-    const conflictCount = getConflictCount(order);
-    if (conflictCount > 0) {
-      setApproveModal({ open: true, mode: 'conflicts', conflictCount, missingFields: [] });
-      return;
-    }
-    setApproveModal({ open: true, mode: 'confirm', conflictCount: 0, missingFields: [] });
-  };
-
-  const submitApproval = async (overrideMissing = false) => {
-    setIsApprovingOrder(true);
-    try {
-      const result = await approveOrder(orderId, { overrideMissing });
-      toast.success('Proceeding with validation');
-      setApproveModal({ open: false, mode: 'confirm', conflictCount: 0, missingFields: [] });
-      setOrder(prev => ({ ...(prev || {}), ...(result || {}), status: 'complete' }));
-      if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
-      fetchStatus();
-    } catch (e) {
-      if (e.status === 400 && e.missingFields?.length) {
-        setApproveModal({ open: true, mode: 'missing', conflictCount: 0, missingFields: e.missingFields });
-      } else {
-        toast.error(e.message || 'Approval failed');
-      }
-    } finally {
-      setIsApprovingOrder(false);
-    }
-  };
-
   const submitUndoApproval = async () => {
     setIsUndoingOrderApproval(true);
     try {
@@ -1046,6 +1083,167 @@ const OrderDetail = () => {
     }
   };
 
+  const handleProceedToValidation = async () => {
+    try {
+      // Check if eligibility has been verified
+      if (!eligibilityData) {
+        toast.error('Please check eligibility before proceeding to validation');
+        return;
+      }
+
+      // Fetch fields to get the summary with conflicts and missing counts 
+      const fieldsData = await getOrderFields(orderId);
+      const summary = fieldsData.summary || {};
+
+      const conflicts_count = summary.conflicts?.count || 0;
+      const critical_missing_count = summary.missing?.red?.count || 0;
+      const moderate_missing_count = summary.missing?.yellow?.count || 0;
+      const optional_missing_count = summary.missing?.optional?.count || 0;
+
+      const conflicts = (summary.conflicts?.fields || []).map(name => ({ field_name: name, ...(fieldsData.fields?.[name] || {}) }));
+      const critical_missing = (summary.missing?.red?.fields || []).map(name => ({ field_name: name, ...(fieldsData.fields?.[name] || {}) }));
+      const moderate_missing = (summary.missing?.yellow?.fields || []).map(name => ({ field_name: name, ...(fieldsData.fields?.[name] || {}) }));
+      const optional_missing = (summary.missing?.optional?.fields || []).map(name => ({ field_name: name, ...(fieldsData.fields?.[name] || {}) }));
+
+      console.log('=== PROCEED TO VALIDATION DEBUG ===');
+      console.log('conflicts_count:', conflicts_count);
+      console.log('critical_missing_count:', critical_missing_count);
+      console.log('moderate_missing_count:', moderate_missing_count);
+      console.log('optional_missing_count:', optional_missing_count);
+      console.log('===================================');
+
+      const hasConflicts = conflicts_count > 0;
+      const hasCriticalMissing = critical_missing_count > 0;
+      const hasModerateMissing = moderate_missing_count > 0;
+      const hasOptionalMissing = optional_missing_count > 0;
+
+      if (hasConflicts || hasCriticalMissing || hasModerateMissing || hasOptionalMissing) {
+        // Order is incomplete - show dialog 
+        console.log('SHOWING INCOMPLETE DIALOG');
+        setShowIncompleteDialog(true);
+        pollingStoppedRef.current = true;
+        if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+        setIncompleteDialogData({
+          conflicts_count,
+          critical_missing_count,
+          moderate_missing_count,
+          optional_missing_count,
+          conflicts,
+          critical_missing,
+          moderate_missing,
+          optional_missing
+        });
+      } else {
+        // Order is complete - proceed directly without dialog 
+        console.log('PROCEEDING DIRECTLY - ORDER IS COMPLETE');
+        await proceedToValidationAction(false, null);
+      }
+    } catch (error) {
+      console.error('Failed to check order status:', error);
+      toast.error('Failed to check order status');
+    }
+  };
+
+  const handleCheckEligibilityV2 = async () => {
+  try {
+    setIsCheckingEligibility(true);
+    
+    // Extract required fields from order fields
+    const fieldsData = await getOrderFields(orderId);
+    const fields = fieldsData.fields || {};
+    
+    const member_id = fields.member_id?.value || fields.medicare_id?.value || '';
+    const payer_name = fields.payer_name?.value || fields.insurance_company?.value || '';
+    const hcpcs_code = fields.hcpcs_code?.value || '';
+    
+    // ALWAYS use today's date in YYYY-MM-DD format
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const service_date = `${year}-${month}-${day}`;
+    
+    console.log('=== ELIGIBILITY CHECK ===');
+    console.log('member_id:', member_id);
+    console.log('payer_name:', payer_name);
+    console.log('hcpcs_code:', hcpcs_code);
+    console.log('service_date:', service_date);
+    
+    if (!member_id || !payer_name || !hcpcs_code) {
+      toast.error('Missing required fields: member_id, payer_name, or hcpcs_code');
+      return;
+    }
+    
+    const payload = {
+      member_id,
+      payer_name,
+      hcpcs_code,
+      service_date
+    };
+    
+    console.log('Final payload:', JSON.stringify(payload));
+    
+    // DIRECT FETCH - bypass intakeApi.js
+    const token = localStorage.getItem('kenqo_token') || 
+                  localStorage.getItem('access_token') || 
+                  localStorage.getItem('token');
+    
+    const response = await fetch(
+      `https://kenqo-api-409744260053.asia-south1.run.app/intake/orders/${orderId}/check-eligibility`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      }
+    );
+    
+    const result = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(result.detail || result.message || 'Eligibility check failed');
+    }
+    
+    setEligibilityData(result);
+    toast.success(`Eligibility checked: ${result.status}`);
+    await fetchStatus();
+    
+  } catch (error) {
+    console.error('Eligibility check failed:', error);
+    toast.error(error.message || 'Failed to check eligibility');
+  } finally {
+      setIsCheckingEligibility(false);
+    }
+  };
+
+  const fetchEligibilityHistory = async () => {
+    try {
+      const history = await getEligibilityHistory(orderId);
+      setEligibilityHistory(history.checks || []);
+      setShowEligibilityHistory(true);
+    } catch (error) {
+      console.error('Failed to fetch eligibility history:', error);
+      toast.error('Failed to load eligibility history');
+    }
+  };
+
+  const proceedToValidationAction = async (csrOverride, overrideReason) => {
+    try {
+      const data = await proceedToValidation(orderId, {
+        csr_override: csrOverride,
+        override_reason: overrideReason
+      });
+      toast.success(data.message || 'Validation queued');
+      setShowIncompleteDialog(false);
+      restartPolling();
+    } catch (error) {
+      console.error('Failed to proceed to validation:', error);
+      toast.error(error.message || 'Failed to proceed to validation');
+    }
+  };
+
   const handleEditSave = async () => {
     if (!editModal.newValue || !editModal.reason) { toast.error('Value and reason are required'); return; }
     setIsSubmittingEdit(true);
@@ -1055,6 +1253,11 @@ const OrderDetail = () => {
       setEditModal({ open: false, fieldName: '', currentValue: '', newValue: '', reason: '' });
       fetchFields();
       fetchSummaryHistory();
+      if (order?.validation) {
+        toast.info('Re-validating affected rules...');
+        revalidateFields(orderId, [editModal.fieldName]).catch(() => {});
+      }
+      fetchStatus();
     } catch (e) { toast.error(e.message); }
     finally { setIsSubmittingEdit(false); }
   };
@@ -1147,13 +1350,61 @@ const OrderDetail = () => {
     });
   };
 
+  const normalizedFieldMap = useMemo(() => getNormalizedFieldsMap(fields), [fields]);
+  const normalizedFieldsSummary = useMemo(() => getFieldsSummary(fields, normalizedFieldMap), [fields, normalizedFieldMap]);
+
   const handleVerifyEligibility = async () => {
     setIsVerifyingEligibility(true);
     try {
-      await verifyEligibility(orderId);
-      toast.success('Eligibility verification initiated');
-    } catch (e) { toast.error(e.message || 'Verification failed'); }
-    finally { setIsVerifyingEligibility(false); }
+      // Gather required fields for eligibility check
+      const today = new Date(); 
+      const year = today.getFullYear(); 
+      const month = String(today.getMonth() + 1).padStart(2, '0'); 
+      const day = String(today.getDate()).padStart(2, '0'); 
+      const service_date = `${year}-${month}-${day}`; 
+
+      const data = {
+        member_id: normalizedFieldMap['member_id']?.value || '',
+        payer_name: normalizedFieldMap['payer_name']?.value || '',
+        service_date: service_date,  // Use the generated date 
+        hcpcs_code: normalizedFieldMap['hcpcs_code']?.value || '',
+      };
+
+      const result = await checkEligibility(orderId, data);
+      setEligibilityData(result);
+
+      // Show success or failure based on eligibility status
+      if (result.status === 'eligible') {
+        toast.success(`✓ Coverage verified - ${result.coverage_pct}% covered`, {
+          description: result.message
+        });
+      } else if (result.status === 'not_eligible') {
+        toast.error(`✗ ${result.message}`, {
+          description: 'Patient may not be covered for this service'
+        });
+      } else {
+        toast.info('Eligibility check completed', {
+          description: result.message
+        });
+      }
+
+      // Optionally refresh order status to update UI
+      await fetchStatus();
+
+    } catch (e) {
+      // Handle specific error cases
+      if (e.message?.includes('Missing required fields')) {
+        toast.error('Cannot verify eligibility', {
+          description: e.message
+        });
+      } else {
+        toast.error('Verification failed', {
+          description: e.message || 'Unable to check eligibility at this time'
+        });
+      }
+    } finally {
+      setIsVerifyingEligibility(false);
+    }
   };
 
   const patientName = useMemo(() => {
@@ -1175,7 +1426,7 @@ const OrderDetail = () => {
 
   const isAwaitingCSRDecision = order?.awaiting_csr || order?.status === 'awaiting_csr_decision';
   const canAddDocuments = ['extracted', 'awaiting_csr_decision'].includes(order?.status);
-  const canApproveOrder = isDerivedReadyForReview(order);
+  const canApproveOrder = ['extracted', 'incomplete', 'needs_review', 'awaiting_csr_decision'].includes(order?.status);
   const canDeleteOrder = !!order && order.status !== 'complete';
   const canUndoApproval = order?.status === 'complete';
   const isPendingMergeDecision = order?.awaiting_csr === true && order?.identity_decision_status === 'pending';
@@ -1183,8 +1434,6 @@ const OrderDetail = () => {
     (documents || []).filter((doc) => String(doc?.status || '').toLowerCase() === 'corrupt')
   ), [documents]);
 
-  const normalizedFieldMap = useMemo(() => getNormalizedFieldsMap(fields), [fields]);
-  const normalizedFieldsSummary = useMemo(() => getFieldsSummary(fields, normalizedFieldMap), [fields, normalizedFieldMap]);
   const summaryText = useMemo(() => getOrderSummaryText(order), [order]);
   const fieldBreakdown = useMemo(() => getFieldBreakdown(order), [order]);
   const missingDocuments = useMemo(() => getMissingDocuments(order), [order]);
@@ -1383,6 +1632,612 @@ const OrderDetail = () => {
     if (a.value && !b.value) return -1;
     return (a.confidence || 0) - (b.confidence || 0);
   });
+
+  // â”€â”€â”€ INLINE RESOLUTION COMPONENTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  const ConflictResolverInline = ({ conflict, orderId, onResolved }) => {
+    const [resolving, setResolving] = useState(false);
+    const [selected, setSelected] = useState('');
+
+    const handleResolve = async (val) => {
+      setResolving(true);
+      try {
+        await resolveConflict(orderId, conflict.field_name, val, 'Resolved inline in validation dialog', 'manual_selection');
+        toast.success(`Resolved ${formatFieldName(conflict.field_name)}`);
+        
+        // Refresh all data
+        await Promise.all([
+          fetchFields(),
+          fetchStatus(),
+          fetchSummaryHistory()
+        ]);
+        
+        onResolved();
+      } catch (e) {
+        toast.error(e.message || 'Failed to resolve conflict');
+      } finally {
+        setResolving(false);
+      }
+    };
+
+    return (
+      <div className="p-4 border rounded-xl bg-card space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-black uppercase tracking-widest text-muted-foreground">{formatFieldName(conflict.field_name)}</span>
+          {resolving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {(conflict.options || []).map((opt, i) => (
+            <Button
+              key={i}
+              size="sm"
+              variant="outline"
+              disabled={resolving}
+              onClick={() => handleResolve(opt)}
+              className="h-8 text-[10px] font-bold"
+            >
+              {String(opt)}
+            </Button>
+          ))}
+          <div className="flex gap-2 w-full mt-1">
+            <Input
+              placeholder="Custom value..."
+              className="h-8 text-xs"
+              value={selected}
+              onChange={(e) => setSelected(e.target.value)}
+              disabled={resolving}
+            />
+            <Button
+              size="sm"
+              disabled={resolving || !selected.trim()}
+              onClick={() => handleResolve(selected)}
+              className="h-8 text-[10px] font-bold px-3"
+            >
+              Apply
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const FieldEditorInline = ({ field, orderId, onSaved, value, onChange }) => {
+    const [saving, setSaving] = useState(false);
+    const [internalValue, setInternalValue] = useState(field.value || '');
+
+    const displayValue = value !== undefined ? value : internalValue;
+
+    const handleSave = async () => {
+      const valToSave = displayValue.trim();
+      if (!valToSave) return;
+      setSaving(true);
+      try {
+        await editField(orderId, field.field_name, valToSave, 'Added missing field inline in validation dialog');
+        toast.success(`Updated ${formatFieldName(field.field_name)}`);
+        
+        // Refresh all data
+        await Promise.all([
+          fetchFields(),
+          fetchStatus(),
+          fetchSummaryHistory()
+        ]);
+        
+        onSaved();
+      } catch (e) {
+        toast.error(e.message || 'Failed to update field');
+      } finally {
+        setSaving(false);
+      }
+    };
+
+    const handleInternalChange = (e) => {
+      const newVal = e.target.value;
+      if (onChange) {
+        onChange(newVal);
+      } else {
+        setInternalValue(newVal);
+      }
+    };
+
+    return (
+      <div className="p-4 border rounded-xl bg-card space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-black uppercase tracking-widest text-muted-foreground">{formatFieldName(field.field_name)}</span>
+          {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+        </div>
+        <div className="flex gap-2">
+          <Input
+            placeholder="Enter value..."
+            className="h-9 text-xs"
+            value={displayValue}
+            onChange={handleInternalChange}
+            disabled={saving}
+          />
+          <Button
+            size="sm"
+            disabled={saving || !displayValue.trim()}
+            onClick={handleSave}
+            className="h-9 text-[10px] font-bold px-4"
+          >
+            Apply
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
+  const EligibilityCard = () => {
+    if (!eligibilityData) {
+      return (
+        <Card className="rounded-lg border-blue-500/40 bg-blue-500/[0.03]">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-blue-500/10 text-blue-600">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-blue-700">Eligibility Status</h3>
+                  <p className="text-xs text-blue-600/70">No eligibility check performed yet</p>
+                </div>
+              </div>
+              <Button
+                onClick={handleCheckEligibilityV2}
+                disabled={isCheckingEligibility}
+                className="h-10 rounded-xl px-6 font-black uppercase tracking-widest text-[10px] shadow-xl shadow-blue-500/20"
+              >
+                {isCheckingEligibility ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Check Eligibility'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    const isEligible = eligibilityData.status === 'eligible';
+    const bgColor = isEligible ? 'bg-emerald-500/[0.03]' : 'bg-red-500/[0.03]';
+    const borderColor = isEligible ? 'border-emerald-500/40' : 'border-red-500/40';
+    const iconBg = isEligible ? 'bg-emerald-500/10 text-emerald-600' : 'bg-red-500/10 text-red-600';
+    const textColor = isEligible ? 'text-emerald-700' : 'text-red-700';
+
+    return (
+      <Card className={`rounded-lg ${borderColor} ${bgColor}`}>
+        <CardContent className="p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`flex h-10 w-10 items-center justify-center rounded-md ${iconBg}`}>
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className={`text-sm font-bold ${textColor}`}>
+                  {isEligible ? 'Eligible' : 'Not Eligible'}
+                </h3>
+                <button
+                  onClick={fetchEligibilityHistory}
+                  className={`text-xs ${textColor}/70 hover:underline cursor-pointer`}
+                >
+                  Version {eligibilityData.version} â€¢ {new Date(eligibilityData.checked_at).toLocaleString()}
+                </button>
+              </div>
+            </div>
+            <Button
+              onClick={handleCheckEligibilityV2}
+              disabled={isCheckingEligibility}
+              variant="outline"
+              className="h-9 rounded-xl px-4 font-bold text-[10px] uppercase tracking-widest"
+            >
+              {isCheckingEligibility ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Re-check'}
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 pt-2 border-t border-border/20">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-1">Coverage</p>
+              <p className="text-lg font-black">{eligibilityData.coverage_pct}%</p>
+            </div>
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-1">Message</p>
+              <p className="text-sm font-medium">{eligibilityData.message}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const IncompleteDialog = () => {
+    if (!showIncompleteDialog || !incompleteDialogData) return null;
+
+    const { 
+      conflicts_count = 0, 
+      critical_missing_count = 0, 
+      moderate_missing_count = 0, 
+      optional_missing_count = 0 
+    } = incompleteDialogData || {};
+    const isNotEligible = eligibilityData && eligibilityData.status === 'not_eligible';
+
+    const [globalReason, setGlobalReason] = useState('');
+    const [isApplyingAll, setIsApplyingAll] = useState(false);
+
+    const handleApplyMissingAll = async (section) => {
+      if (!globalReason.trim()) {
+        toast.error('Please provide a reason for these changes');
+        return;
+      }
+
+      setIsApplyingBatch(prev => ({ ...prev, [section]: true }));
+      try {
+        const sectionFields = 
+          section === 'critical' ? incompleteDialogData.critical_missing :
+          section === 'moderate' ? incompleteDialogData.moderate_missing :
+          incompleteDialogData.optional_missing;
+
+        const fieldsToResolve = (sectionFields || [])
+          .filter(field => (fieldDrafts[field.field_name] || '').trim() !== '')
+          .map(field => ({
+            field_name: field.field_name,
+            chosen_value: fieldDrafts[field.field_name].trim(),
+            resolution_type: 'batch_fill',
+            edit_reason: globalReason.trim()
+          }));
+
+        if (fieldsToResolve.length === 0) {
+          toast.error('Please enter values for at least one field');
+          return;
+        }
+
+        console.log('Batch resolve payload:', { conflicts: fieldsToResolve });
+        console.log(`Sending ${fieldsToResolve.length} fields to batch resolve`);
+
+        const response = await resolveConflictsBatch(orderId, fieldsToResolve);
+        console.log('Batch resolve succeeded, response:', response);
+        
+        toast.success(`Resolved ${fieldsToResolve.length} ${section} fields`);
+
+        await Promise.all([
+          fetchFields(),
+          fetchStatus(),
+          fetchSummaryHistory()
+        ]);
+
+        // Re-check for remaining issues
+        const fieldsData = await getOrderFields(orderId);
+        const summary = fieldsData.summary || {};
+        const totalIssues = 
+          (summary.conflicts?.count || 0) + 
+          (summary.missing?.red?.count || 0) + 
+          (summary.missing?.yellow?.count || 0) + 
+          (summary.missing?.optional?.count || 0);
+
+        if (totalIssues === 0) {
+          setShowIncompleteDialog(false);
+          setGlobalReason('');
+          setFieldDrafts({});
+        } else {
+          // Update dialog data with remaining fields
+          setIncompleteDialogData({
+            conflicts_count: summary.conflicts?.count || 0,
+            critical_missing_count: summary.missing?.red?.count || 0,
+            moderate_missing_count: summary.missing?.yellow?.count || 0,
+            optional_missing_count: summary.missing?.optional?.count || 0,
+            conflicts: (summary.conflicts?.fields || []).map(name => ({ field_name: name, ...(fieldsData.fields?.[name] || {}) })),
+            critical_missing: (summary.missing?.red?.fields || []).map(name => ({ field_name: name, ...(fieldsData.fields?.[name] || {}) })),
+            moderate_missing: (summary.missing?.yellow?.fields || []).map(name => ({ field_name: name, ...(fieldsData.fields?.[name] || {}) })),
+            optional_missing: (summary.missing?.optional?.fields || []).map(name => ({ field_name: name, ...(fieldsData.fields?.[name] || {}) }))
+          });
+        }
+      } catch (error) {
+        console.error(`Failed to batch fill ${section}:`, error);
+        toast.error(error.message || `Failed to resolve ${section} fields`);
+      } finally {
+        setIsApplyingBatch(prev => ({ ...prev, [section]: false }));
+      }
+    };
+
+    const handleApplyAll = async () => {
+      if (!globalReason.trim()) {
+        toast.error('Please provide a reason for these changes');
+        return;
+      }
+
+      setIsApplyingAll(true);
+      try {
+        const conflictsToResolve = (incompleteDialogData.conflicts || []).map(conflict => ({
+          field_name: conflict.field_name,
+          chosen_value: String(conflict.values?.[0] || conflict.options?.[0] || conflict.value || ''),
+          resolution_type: 'auto_first',
+          edit_reason: globalReason.trim()
+        }));
+
+        await resolveConflictsBatch(orderId, conflictsToResolve);
+
+        toast.success(`Resolved ${conflictsToResolve.length} conflicts`);
+
+        // Refresh ALL data after batch resolve
+        await fetchFields();
+        await fetchStatus();
+        await fetchSummaryHistory();
+
+        // Close dialog 
+        setShowIncompleteDialog(false);
+        setGlobalReason('');
+
+      } catch (error) {
+        console.error('Failed to apply all:', error);
+        toast.error(error.message || 'Failed to resolve conflicts');
+      } finally {
+        setIsApplyingAll(false);
+      }
+    };
+
+    return (
+      <Dialog open={showIncompleteDialog} onOpenChange={(open) => { 
+        if (!open) { 
+          setShowIncompleteDialog(false); 
+          restartPolling(); 
+        } 
+      }}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto rounded-[2rem] border-none shadow-2xl p-0">
+          <div className="p-8 space-y-6 relative">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-black tracking-tight">Order Has Incomplete Fields</DialogTitle>
+              <DialogDescription className="text-xs font-medium text-muted-foreground">
+                Review and decide how to proceed with this order.
+              </DialogDescription>
+            </DialogHeader>
+
+            <DialogClose className="absolute right-4 top-4 rounded-full p-2 hover:bg-muted transition-colors">
+              <X className="h-4 w-4" />
+            </DialogClose>
+
+            {/* Summary */}
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 space-y-3">
+              <p className="text-xs font-bold text-amber-700 leading-relaxed">
+                This order has <span className="font-black underline">{conflicts_count} unresolved conflicts</span>,{' '}
+                <span className="font-black underline">{critical_missing_count} critical missing fields</span>,{' '}
+                <span className="font-black underline">{moderate_missing_count} moderate missing fields</span>, and{' '}
+                <span className="font-black underline">{optional_missing_count} optional missing fields</span>.
+              </p>
+              {isNotEligible && (
+                <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3">
+                  <p className="text-xs font-bold text-red-700 flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4" />
+                    Patient is NOT ELIGIBLE for coverage
+                  </p>
+                  <p className="text-[10px] text-red-600 mt-1">{eligibilityData.message}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Radio Options */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={() => { setDialogChoice('override'); setShowResolveFields(false); }}
+                className={`p-5 rounded-2xl border-2 text-left transition-all duration-200 ${dialogChoice === 'override' ? 'border-primary bg-primary/[0.03] shadow-lg shadow-primary/5' : 'border-border/40 hover:border-border/80 bg-muted/5'}`}
+              >
+                <div className="flex items-center gap-3 mb-2">
+                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${dialogChoice === 'override' ? 'border-primary' : 'border-muted-foreground/30'}`}>
+                    {dialogChoice === 'override' && <div className="w-2 h-2 rounded-full bg-primary" />}
+                  </div>
+                  <p className="text-sm font-black uppercase tracking-tight">Proceed Anyway</p>
+                </div>
+                <p className="text-[11px] font-medium text-muted-foreground leading-relaxed pl-7">
+                  Proceed to validation with incomplete data. CSR override will be logged.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setDialogChoice('resolve'); setShowResolveFields(true); }}
+                className={`p-5 rounded-2xl border-2 text-left transition-all duration-200 ${dialogChoice === 'resolve' ? 'border-primary bg-primary/[0.03] shadow-lg shadow-primary/5' : 'border-border/40 hover:border-border/80 bg-muted/5'}`}
+              >
+                <div className="flex items-center gap-3 mb-2">
+                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${dialogChoice === 'resolve' ? 'border-primary' : 'border-muted-foreground/30'}`}>
+                    {dialogChoice === 'resolve' && <div className="w-2 h-2 rounded-full bg-primary" />}
+                  </div>
+                  <p className="text-sm font-black uppercase tracking-tight">Resolve Fields Now</p>
+                </div>
+                <p className="text-[11px] font-medium text-muted-foreground leading-relaxed pl-7">
+                  Review and fix conflicts and missing fields before proceeding.
+                </p>
+              </button>
+            </div>
+
+            {/* Reason for changes (Only show if "resolve" selected) */}
+            {showResolveFields && (
+              <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
+                  Reason for changes (applies to all fields you resolve)
+                </label>
+                <Input
+                  placeholder="e.g., Verified with patient, Confirmed with doctor's office..."
+                  value={globalReason}
+                  onChange={(e) => setGlobalReason(e.target.value)}
+                  className="rounded-2xl border-2 border-border/40 h-12 text-sm focus-visible:ring-primary"
+                />
+              </div>
+            )}
+
+            {/* Expandable Field Resolution Sections */}
+            {showResolveFields && (
+              <div className="space-y-4 pt-2">
+                {/* Conflicts Section */}
+                {conflicts_count > 0 && (
+                  <Collapsible defaultOpen>
+                    <CollapsibleTrigger className="flex items-center justify-between w-full p-4 bg-red-500/10 hover:bg-red-500/15 rounded-2xl transition-colors">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-red-700">
+                        Unresolved Conflicts ({conflicts_count})
+                      </span>
+                      <div className="flex items-center gap-3">
+                        <Button 
+                          size="sm"
+                          variant="ghost"
+                          onClick={(e) => { e.stopPropagation(); handleApplyAll(); }}
+                          disabled={isApplyingAll}
+                          className="h-7 px-3 rounded-lg text-[9px] font-black uppercase tracking-widest bg-red-500/20 hover:bg-red-500/30 text-red-700 border-none"
+                        >
+                          {isApplyingAll ? <Loader2 className="w-3 h-3 animate-spin mr-1.5" /> : null}
+                          Apply All ({conflicts_count})
+                        </Button>
+                        <ChevronDown className="h-4 w-4 text-red-500" />
+                      </div>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="mt-3 space-y-3 animate-in slide-in-from-top-2">
+                      {(incompleteDialogData.conflicts || []).map((conflict) => (
+                        <ConflictResolverInline
+                          key={conflict.field_name}
+                          conflict={conflict}
+                          orderId={orderId}
+                          onResolved={handleProceedToValidation}
+                        />
+                      ))}
+                    </CollapsibleContent>
+                  </Collapsible>
+                )}
+
+                {/* Critical Missing Section */}
+                {critical_missing_count > 0 && (
+                  <Collapsible defaultOpen>
+                    <CollapsibleTrigger className="flex items-center justify-between w-full p-4 bg-red-500/10 hover:bg-red-500/15 rounded-2xl transition-colors">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-red-700">
+                        Critical Missing Fields ({critical_missing_count})
+                      </span>
+                      <div className="flex items-center gap-3">
+                        <Button 
+                          size="sm"
+                          variant="ghost"
+                          onClick={(e) => { e.stopPropagation(); handleApplyMissingAll('critical'); }}
+                          disabled={isApplyingBatch.critical}
+                          className="h-7 px-3 rounded-lg text-[9px] font-black uppercase tracking-widest bg-red-500/20 hover:bg-red-500/30 text-red-700 border-none"
+                        >
+                          {isApplyingBatch.critical ? <Loader2 className="w-3 h-3 animate-spin mr-1.5" /> : null}
+                          Apply All ({critical_missing_count})
+                        </Button>
+                        <ChevronDown className="h-4 w-4 text-red-500" />
+                      </div>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="mt-3 space-y-3 animate-in slide-in-from-top-2">
+                      {(incompleteDialogData.critical_missing || []).map((field) => (
+                        <FieldEditorInline
+                          key={field.field_name}
+                          field={field}
+                          orderId={orderId}
+                          onSaved={handleProceedToValidation}
+                          value={fieldDrafts[field.field_name] || ''}
+                          onChange={(val) => handleFieldDraftChange(field.field_name, val)}
+                        />
+                      ))}
+                    </CollapsibleContent>
+                  </Collapsible>
+                )}
+
+                {/* Moderate Missing Section */}
+                {moderate_missing_count > 0 && (
+                  <Collapsible>
+                    <CollapsibleTrigger className="flex items-center justify-between w-full p-4 bg-amber-500/10 hover:bg-amber-500/15 rounded-2xl transition-colors">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-amber-700">
+                        Moderate Missing Fields ({moderate_missing_count})
+                      </span>
+                      <div className="flex items-center gap-3">
+                        <Button 
+                          size="sm"
+                          variant="ghost"
+                          onClick={(e) => { e.stopPropagation(); handleApplyMissingAll('moderate'); }}
+                          disabled={isApplyingBatch.moderate}
+                          className="h-7 px-3 rounded-lg text-[9px] font-black uppercase tracking-widest bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 border-none"
+                        >
+                          {isApplyingBatch.moderate ? <Loader2 className="w-3 h-3 animate-spin mr-1.5" /> : null}
+                          Apply All ({moderate_missing_count})
+                        </Button>
+                        <ChevronDown className="h-4 w-4 text-amber-500" />
+                      </div>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="mt-3 space-y-3 animate-in slide-in-from-top-2">
+                      {(incompleteDialogData.moderate_missing || []).map((field) => (
+                        <FieldEditorInline
+                          key={field.field_name}
+                          field={field}
+                          orderId={orderId}
+                          onSaved={handleProceedToValidation}
+                          value={fieldDrafts[field.field_name] || ''}
+                          onChange={(val) => handleFieldDraftChange(field.field_name, val)}
+                        />
+                      ))}
+                    </CollapsibleContent>
+                  </Collapsible>
+                )}
+
+                {/* Optional Missing Section */}
+                {optional_missing_count > 0 && (
+                  <Collapsible>
+                    <CollapsibleTrigger className="flex items-center justify-between w-full p-4 bg-blue-500/10 hover:bg-blue-500/15 rounded-2xl transition-colors">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-blue-700">
+                        Optional Missing Fields ({optional_missing_count})
+                      </span>
+                      <div className="flex items-center gap-3">
+                        <Button 
+                          size="sm"
+                          variant="ghost"
+                          onClick={(e) => { e.stopPropagation(); handleApplyMissingAll('optional'); }}
+                          disabled={isApplyingBatch.optional}
+                          className="h-7 px-3 rounded-lg text-[9px] font-black uppercase tracking-widest bg-blue-500/20 hover:bg-blue-500/30 text-blue-700 border-none"
+                        >
+                          {isApplyingBatch.optional ? <Loader2 className="w-3 h-3 animate-spin mr-1.5" /> : null}
+                          Apply All ({optional_missing_count})
+                        </Button>
+                        <ChevronDown className="h-4 w-4 text-blue-500" />
+                      </div>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="mt-3 space-y-3 animate-in slide-in-from-top-2">
+                      {(incompleteDialogData.optional_missing || []).map((field) => (
+                        <FieldEditorInline
+                          key={field.field_name}
+                          field={field}
+                          orderId={orderId}
+                          onSaved={handleProceedToValidation}
+                          value={fieldDrafts[field.field_name] || ''}
+                          onChange={(val) => handleFieldDraftChange(field.field_name, val)}
+                        />
+                      ))}
+                    </CollapsibleContent>
+                  </Collapsible>
+                )}
+              </div>
+            )}
+
+            <DialogFooter className="pt-4 flex items-center justify-between sm:justify-between">
+              <Button variant="ghost" onClick={() => { setShowIncompleteDialog(false); restartPolling(); }} className="rounded-xl text-[10px] font-black uppercase tracking-widest">
+                Cancel
+              </Button>
+
+              <div className="flex gap-3">
+                {showResolveFields && conflicts_count > 0 && (
+                  <Button
+                    onClick={handleApplyAll}
+                    disabled={isApplyingAll}
+                    className="h-11 rounded-xl px-6 font-black uppercase tracking-widest text-[10px] bg-primary/10 text-primary hover:bg-primary/20"
+                  >
+                    {isApplyingAll ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                    Apply All
+                  </Button>
+                )}
+
+                {dialogChoice === 'override' && (
+                  <Button
+                    onClick={() => proceedToValidationAction(true, 'incomplete_proceed')}
+                    className="h-11 rounded-xl bg-amber-600 hover:bg-amber-700 text-white shadow-lg shadow-amber-600/20 px-8 text-[10px] font-black uppercase tracking-widest"
+                  >
+                    Proceed Anyway
+                  </Button>
+                )}
+              </div>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  };
 
   // â”€â”€â”€ DOCUMENTS ACCORDION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -1648,7 +2503,7 @@ const OrderDetail = () => {
             <AccordionItem value="summary" className="border-none">
               <AccordionTrigger className="hover:no-underline py-0 [&>svg]:w-5 [&>svg]:h-5 [&>svg]:text-muted-foreground/50 [&>svg]:mr-4">
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4 w-full text-left pr-4">
-                  {summarySections.map((section) => (
+                  {summarySections.filter(s => s.count > 0).map((section) => (
                     <div
                       key={section.value}
                       className={`min-h-[112px] rounded-xl border border-border/30 px-4 py-4 ${section.className}`}
@@ -1664,11 +2519,17 @@ const OrderDetail = () => {
                       <p className="mt-1 text-xs font-medium text-muted-foreground">{section.description}</p>
                     </div>
                   ))}
+                  {summarySections.every(s => s.count === 0) && (
+                    <div className="col-span-full py-8 text-center bg-muted/5 rounded-xl border border-dashed border-border/30">
+                      <CheckCircle2 className="w-8 h-8 text-emerald-500/20 mx-auto mb-2" />
+                      <p className="text-sm font-black uppercase tracking-widest text-muted-foreground/40">No missing fields or conflicts</p>
+                    </div>
+                  )}
                 </div>
               </AccordionTrigger>
               <AccordionContent className="pb-0 pt-3">
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4 w-full">
-                  {summarySections.map((section) => (
+                  {summarySections.filter(s => s.count > 0).map((section) => (
                     <div
                       key={section.value}
                       className={`rounded-xl border border-border/30 px-4 py-4 ${section.className}`}
@@ -2750,15 +3611,41 @@ const OrderDetail = () => {
                         <p className="text-xs text-muted-foreground">Verify DME coverage for lymphedema supplies</p>
                       </div>
                     </div>
-                    <Button
-                      onClick={handleVerifyEligibility}
-                      disabled={isVerifyingEligibility}
-                      className="h-10 rounded-xl px-6 font-black uppercase tracking-widest text-[10px] shadow-lg shadow-primary/15"
-                    >
-                      {isVerifyingEligibility
-                        ? <><Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />Verifying...</>
-                        : 'Verify Eligibility'}
-                    </Button>
+                    <div className="flex flex-wrap items-center gap-4">
+                      <Button
+                        onClick={handleVerifyEligibility}
+                        disabled={isVerifyingEligibility}
+                        className="h-10 rounded-xl px-6 font-black uppercase tracking-widest text-[10px] shadow-lg shadow-primary/15"
+                      >
+                        {isVerifyingEligibility
+                          ? <><Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />Verifying...</>
+                          : 'Verify Eligibility'}
+                      </Button>
+
+                      {eligibilityResult && (
+                        <div className={`flex items-center gap-3 px-4 py-2 rounded-xl border animate-in fade-in slide-in-from-left-2 ${
+                          eligibilityResult.eligibility_status === 'eligible'
+                            ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-700'
+                            : 'bg-red-500/5 border-red-500/20 text-red-700'
+                        }`}>
+                          <div className="flex items-center gap-2">
+                            {eligibilityResult.eligibility_status === 'eligible'
+                              ? <CheckCircle2 className="w-3.5 h-3.5" />
+                              : <X className="w-3.5 h-3.5" />
+                            }
+                            <div className="flex flex-col">
+                              <span className="text-[10px] font-black uppercase tracking-widest leading-none">
+                                {eligibilityResult.eligibility_status === 'eligible' ? 'Eligible' : 'Not Eligible'}
+                                {eligibilityResult.coverage_pct !== undefined && ` (${eligibilityResult.coverage_pct}%)`}
+                              </span>
+                              <span className="text-[9px] font-medium opacity-70 truncate max-w-[200px]" title={eligibilityResult.message}>
+                                {eligibilityResult.message}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -2854,13 +3741,21 @@ const OrderDetail = () => {
           </Button>
         )}
         {canApproveOrder && (
-          <Button
-            onClick={openApproveModal}
-            className="h-9 rounded-lg px-4 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/20"
-          >
-            <ChevronRight className="w-3.5 h-3.5 mr-2" />
-            Proceed with Validation
-          </Button>
+          <div className="flex flex-col items-end gap-1">
+            <Button
+              onClick={handleProceedToValidation}
+              disabled={isLoadingFields}
+              className="h-9 rounded-lg px-4 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/20"
+            >
+              <ChevronRight className="w-3.5 h-3.5 mr-2" />
+              Proceed to Validation
+            </Button>
+            {!eligibilityData && (
+              <p className="text-[10px] text-amber-600 font-bold uppercase tracking-tight">
+                Check eligibility first
+              </p>
+            )}
+          </div>
         )}
         {canDeleteOrder && (
           <Button
@@ -2879,6 +3774,7 @@ const OrderDetail = () => {
   const isCompactLayout = order?.status === 'extracted' ||
     order?.status === 'complete' ||
     order?.status === 'incomplete' ||
+    order?.status === 'needs_review' ||
     (order?.status === 'awaiting_csr_decision' && fields) ||
     (order?.awaiting_csr && fields);
 
@@ -2890,6 +3786,96 @@ const OrderDetail = () => {
       </div>
     );
   }
+
+  const EligibilityHistoryModal = () => (
+    <Dialog open={showEligibilityHistory} onOpenChange={setShowEligibilityHistory}>
+      <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto rounded-[2rem] border-none shadow-2xl p-0">
+        <div className="p-8 space-y-6">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-black tracking-tight">Eligibility History</DialogTitle>
+            <DialogDescription className="text-xs font-medium text-muted-foreground">
+              Previous eligibility checks for this order.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {eligibilityHistory.length > 0 ? (
+              [...eligibilityHistory].reverse().map((check, idx) => {
+                const isEligible = check.status === 'eligible';
+                const statusColor = isEligible ? 'text-emerald-700 bg-emerald-500/10 border-emerald-500/20' : 'text-red-700 bg-red-500/10 border-red-500/20';
+                
+                return (
+                  <Card key={idx} className="border border-border/40 rounded-2xl overflow-hidden">
+                    <CardContent className="p-0">
+                      <div className="flex items-center justify-between p-4 bg-muted/5 border-b border-border/20">
+                        <div className="flex items-center gap-3">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border ${statusColor}`}>
+                            {check.status || 'Unknown'}
+                          </span>
+                          <span className="text-xs font-bold text-muted-foreground">
+                            Version {check.version || eligibilityHistory.length - idx}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-muted-foreground/60 font-medium">
+                          {new Date(check.checked_at).toLocaleString()}
+                        </span>
+                      </div>
+                      
+                      <div className="p-5 space-y-4">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          <div>
+                            <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-1">Coverage</p>
+                            <p className="text-sm font-black">{check.coverage_pct}%</p>
+                          </div>
+                          <div>
+                            <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-1">Member ID</p>
+                            <p className="text-sm font-medium">{check.member_id || '—'}</p>
+                          </div>
+                          <div>
+                            <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-1">Payer</p>
+                            <p className="text-sm font-medium">{check.payer_name || '—'}</p>
+                          </div>
+                          <div>
+                            <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-1">Service Date</p>
+                            <p className="text-sm font-medium">{check.service_date || '—'}</p>
+                          </div>
+                        </div>
+                        
+                        <div className="pt-3 border-t border-border/20">
+                          <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-1">Message</p>
+                          <p className="text-sm font-medium text-foreground/80 leading-relaxed">
+                            {check.message || 'No message provided.'}
+                          </p>
+                        </div>
+
+                        {check.checked_by && (
+                          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60">
+                            <User className="w-3 h-3" />
+                            <span>Checked by {check.checked_by}</span>
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })
+            ) : (
+              <div className="py-12 text-center space-y-2">
+                <ShieldAlert className="w-8 h-8 text-muted-foreground/20 mx-auto" />
+                <p className="text-sm font-medium text-muted-foreground">No eligibility history found.</p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="pt-4">
+            <Button variant="ghost" onClick={() => setShowEligibilityHistory(false)} className="rounded-xl text-[10px] font-black uppercase tracking-widest">
+              Close
+            </Button>
+          </DialogFooter>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 
   return (
     <div className="space-y-4 animate-in fade-in duration-500 pb-20">
@@ -2906,6 +3892,117 @@ const OrderDetail = () => {
         </div>
         {!isCompactLayout && renderOrderActions()}
       </div>
+
+      {(order?.status === 'extracted' || order?.status === 'extraction_complete' || order?.status === 'incomplete' || order?.status === 'needs_review' || order?.status === 'awaiting_csr_decision' || order?.status === 'pending_validation' || order?.status === 'pending_validation_with_warning' || order?.status === 'validating' || order?.status === 'validated' || order?.status === 'validated_with_warning' || order?.status === 'validation_failed') && (
+        <div className="mt-6">
+          <EligibilityCard />
+        </div>
+      )}
+
+      {(order?.status === 'validating' || order?.status === 'pending_validation' || order?.status === 'pending_validation_with_warning' || order?.status === 'validated' || order?.status === 'validated_with_warning' || order?.status === 'validation_failed') && (
+        <div className="mt-4">
+          {(order?.status === 'validating' || order?.status === 'pending_validation' || order?.status === 'pending_validation_with_warning') ? (
+            <Card className="border border-primary/20 bg-primary/[0.02] rounded-2xl shadow-md">
+              <CardContent className="p-6 flex items-center gap-4">
+                <Loader2 className="w-5 h-5 text-primary animate-spin shrink-0" />
+                <div>
+                  <p className="text-sm font-black text-primary">Running coverage policy validation...</p>
+                  <p className="text-[11px] text-muted-foreground font-medium mt-0.5">This may take 30–60 seconds</p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : !order?.validation ? (
+            <Card className="border border-border/30 rounded-2xl shadow-md">
+              <CardContent className="p-6 flex items-center gap-3">
+                <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                <p className="text-sm font-medium text-muted-foreground">Validation complete — loading results...</p>
+              </CardContent>
+            </Card>
+          ) : (() => {
+            const v = order.validation;
+            const statusColor = v.overall_status === 'passed' ? 'emerald' : v.overall_status === 'warning' ? 'amber' : 'red';
+            const scoreColor = v.overall_score >= 80 ? 'bg-emerald-500' : v.overall_score >= 60 ? 'bg-amber-500' : 'bg-red-500';
+            const scoreTextColor = v.overall_score >= 80 ? 'text-emerald-600' : v.overall_score >= 60 ? 'text-amber-600' : 'text-red-600';
+            return (
+              <Card className={`border rounded-2xl shadow-md ${v.overall_status === 'failed' ? 'border-red-500/30 bg-red-500/[0.02]' : v.overall_status === 'warning' ? 'border-amber-500/30 bg-amber-500/[0.02]' : 'border-emerald-500/30 bg-emerald-500/[0.02]'}`}>
+                <CardContent className="p-6 space-y-5">
+                  {/* Header */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <ClipboardList className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-sm font-black uppercase tracking-widest">Coverage Validation</span>
+                    </div>
+                    <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${
+                      v.overall_status === 'passed' ? 'bg-emerald-500/10 text-emerald-600' :
+                      v.overall_status === 'warning' ? 'bg-amber-500/10 text-amber-600' :
+                      'bg-red-500/10 text-red-600'
+                    }`}>
+                      {v.overall_status === 'passed' ? 'Passed' : v.overall_status === 'warning' ? 'Warning' : 'Failed — Claim at Risk'}
+                    </span>
+                  </div>
+
+                  {/* Score */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">Compliance Score</span>
+                      <span className={`text-2xl font-black ${scoreTextColor}`}>{v.overall_score.toFixed(1)}%</span>
+                    </div>
+                    <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full transition-all duration-700 ${scoreColor}`} style={{ width: `${v.overall_score}%` }} />
+                    </div>
+                  </div>
+
+                  {/* Stat pills */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="bg-emerald-500/10 rounded-xl p-3 text-center">
+                      <p className="text-lg font-black text-emerald-600">{v.rules_passed}/{v.total_rules_checked}</p>
+                      <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600/70 mt-0.5">Passed</p>
+                    </div>
+                    <div className={`${v.rules_failed > 0 ? 'bg-amber-500/10' : 'bg-muted/40'} rounded-xl p-3 text-center`}>
+                      <p className={`text-lg font-black ${v.rules_failed > 0 ? 'text-amber-600' : 'text-muted-foreground'}`}>{v.rules_failed}</p>
+                      <p className={`text-[9px] font-black uppercase tracking-widest mt-0.5 ${v.rules_failed > 0 ? 'text-amber-600/70' : 'text-muted-foreground/60'}`}>Failed</p>
+                    </div>
+                    <div className={`${v.blocking_failures > 0 ? 'bg-red-500/10' : 'bg-muted/40'} rounded-xl p-3 text-center`}>
+                      <p className={`text-lg font-black ${v.blocking_failures > 0 ? 'text-red-600' : 'text-muted-foreground'}`}>{v.blocking_failures}</p>
+                      <p className={`text-[9px] font-black uppercase tracking-widest mt-0.5 ${v.blocking_failures > 0 ? 'text-red-600/70' : 'text-muted-foreground/60'}`}>Blocking</p>
+                    </div>
+                  </div>
+
+                  {/* Blocking alert */}
+                  {v.blocking_failures > 0 && (
+                    <div className="flex items-start gap-3 bg-red-500/10 border border-red-500/20 rounded-xl p-4">
+                      <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                      <p className="text-[11px] font-bold text-red-700">Blocking failures detected. This claim will be denied without resolving these issues.</p>
+                    </div>
+                  )}
+
+                  {/* View Full Report button */}
+                  <Button
+                    variant="outline"
+                    disabled={isLoadingReport}
+                    onClick={async () => {
+                      setIsLoadingReport(true);
+                      try {
+                        const report = await getValidationResults(orderId);
+                        setValidationReport(report);
+                        setShowReportDialog(true);
+                      } catch (e) {
+                        toast.error('Failed to load validation report');
+                      } finally {
+                        setIsLoadingReport(false);
+                      }
+                    }}
+                    className="w-full h-10 rounded-xl font-black uppercase tracking-widest text-[10px] border-border/40"
+                  >
+                    {isLoadingReport ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <BarChart3 className="w-4 h-4 mr-2" />}
+                    View Full Report
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })()}
+        </div>
+      )}
 
       {isCompactLayout ? (
         <>
@@ -3027,7 +4124,7 @@ const OrderDetail = () => {
                 </Card>
               )}
 
-              {(order?.status === 'extracted' || order?.status === 'complete' || order?.status === 'incomplete' || (order?.status === 'awaiting_csr_decision' && fields) || (order?.awaiting_csr && fields)) && (
+              {fields && (
                 <div className="space-y-4 animate-in fade-in duration-700">
                   {renderFieldSummaryPills()}
                   {renderFieldTabs()}
@@ -3161,56 +4258,6 @@ const OrderDetail = () => {
         </DialogContent>
       </Dialog>
 
-      {/* APPROVE MODAL */}
-      <Dialog open={approveModal.open} onOpenChange={(v) => !v && setApproveModal({ open: false, mode: 'confirm', missingFields: [], conflictCount: 0 })}>
-        <DialogContent className="max-w-lg rounded-[2rem] border-2 border-border/40 p-8">
-          <DialogHeader className="space-y-3">
-            <DialogTitle className="text-xl font-black tracking-tight uppercase tracking-widest">Proceed with Validation</DialogTitle>
-          </DialogHeader>
-          <div className="py-4 space-y-4">
-            {approveModal.mode === 'conflicts' && (
-              <p className="text-sm font-medium leading-relaxed">
-                {approveModal.conflictCount} unresolved conflict{approveModal.conflictCount === 1 ? '' : 's'} remain. Resolve them first or approve anyway.
-              </p>
-            )}
-            {approveModal.mode === 'missing' && (
-              <div className="space-y-3">
-                <p className="text-sm font-medium leading-relaxed">Missing required RED fields remain. Fill them first or approve anyway.</p>
-                <div className="rounded-xl bg-red-500/5 border border-red-500/20 p-4 max-h-48 overflow-y-auto">
-                  <ul className="space-y-1">
-                    {approveModal.missingFields.map(field => (
-                      <li key={field} className="text-xs font-bold text-red-700">{formatFieldName(String(field))}</li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            )}
-            {approveModal.mode === 'confirm' && (
-              <p className="text-sm font-medium leading-relaxed">Proceed with validation for this order? This marks extraction as complete.</p>
-            )}
-          </div>
-          <DialogFooter className="gap-3">
-            {approveModal.mode === 'confirm' ? (
-              <>
-                <Button variant="ghost" onClick={() => setApproveModal({ open: false, mode: 'confirm', missingFields: [], conflictCount: 0 })} disabled={isApprovingOrder} className="h-11 flex-1 rounded-xl font-black uppercase tracking-widest text-[10px]">Cancel</Button>
-                <Button onClick={() => submitApproval(false)} disabled={isApprovingOrder} className="h-11 flex-1 rounded-xl font-black uppercase tracking-widest text-[10px]">
-                  {isApprovingOrder ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Proceed'}
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button variant="outline" onClick={() => setApproveModal({ open: false, mode: 'confirm', missingFields: [], conflictCount: 0 })} disabled={isApprovingOrder} className="h-11 flex-1 rounded-xl font-black uppercase tracking-widest text-[10px]">
-                  {approveModal.mode === 'missing' ? 'Fill Missing Fields' : 'Resolve First'}
-                </Button>
-                <Button onClick={() => submitApproval(true)} disabled={isApprovingOrder} className="h-11 flex-1 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-black uppercase tracking-widest text-[10px]">
-                  {isApprovingOrder ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Approve Anyway'}
-                </Button>
-              </>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <AlertDialog open={undoApprovalOpen} onOpenChange={setUndoApprovalOpen}>
         <AlertDialogContent className="rounded-[2rem] border-2 border-border/40">
           <AlertDialogHeader>
@@ -3255,7 +4302,7 @@ const OrderDetail = () => {
               <Button variant="ghost" className="h-12 flex-1 rounded-2xl font-black uppercase tracking-widest text-[10px]">Cancel</Button>
             </DialogClose>
             <Button onClick={handleEditSave} disabled={isSubmittingEdit} className="h-12 flex-1 rounded-2xl bg-primary text-white font-black uppercase tracking-widest text-[10px] shadow-xl shadow-primary/20">
-              {isSubmittingEdit ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Changes'}
+              {isSubmittingEdit ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Apply'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -3366,7 +4413,7 @@ const OrderDetail = () => {
                 disabled={isSubmittingConflict || !conflictModal.manualValue?.trim()}
                 className="h-11 rounded-xl"
               >
-                {isSubmittingConflict ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Custom Value'}
+                {isSubmittingConflict ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Apply'}
               </Button>
             </div>
             </div>
@@ -3376,6 +4423,145 @@ const OrderDetail = () => {
               <Button variant="ghost" className="h-14 flex-1 rounded-2xl font-black uppercase tracking-widest text-[11px]">Cancel</Button>
             </DialogClose>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <IncompleteDialog />
+      <EligibilityHistoryModal />
+
+      {/* VALIDATION REPORT DIALOG */}
+      <Dialog open={showReportDialog} onOpenChange={setShowReportDialog}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto rounded-[2rem] border-none shadow-2xl p-0">
+          <div className="p-8 space-y-6">
+            <DialogHeader>
+              <div className="flex items-start justify-between">
+                <div>
+                  <DialogTitle className="text-xl font-black tracking-tight">Validation Report</DialogTitle>
+                  {validationReport && (
+                    <p className="text-[10px] text-muted-foreground font-medium mt-1 uppercase tracking-widest">
+                      Version {validationReport.version} · {validationReport.triggered_by?.replace(/_/g, ' ')} · {new Date(validationReport.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  )}
+                </div>
+                {validationReport?.summary && (
+                  <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full ${
+                    validationReport.summary.overall_status === 'passed' ? 'bg-emerald-500/10 text-emerald-600' :
+                    validationReport.summary.overall_status === 'warning' ? 'bg-amber-500/10 text-amber-600' :
+                    'bg-red-500/10 text-red-600'
+                  }`}>
+                    {validationReport.summary.overall_score?.toFixed(1)}% · {validationReport.summary.overall_status}
+                  </span>
+                )}
+              </div>
+            </DialogHeader>
+
+            {validationReport && (() => {
+              const s = validationReport.summary;
+              const rules = validationReport.rule_results || [];
+
+              // Group rules by category 
+              const grouped = rules.reduce((acc, r) => {
+                const cat = r.category || 'uncategorized';
+                if (!acc[cat]) acc[cat] = [];
+                acc[cat].push(r);
+                return acc;
+              }, {});
+
+              return (
+                <div className="space-y-6">
+                  {/* Summary stats */}
+                  <div className="grid grid-cols-4 gap-3">
+                    {[
+                      { label: 'Total Rules', value: s.total_rules_checked, color: 'text-foreground' },
+                      { label: 'Passed', value: s.rules_passed, color: 'text-emerald-600' },
+                      { label: 'Failed', value: s.rules_failed, color: s.rules_failed > 0 ? 'text-amber-600' : 'text-muted-foreground' },
+                      { label: 'Blocking', value: s.blocking_failures, color: s.blocking_failures > 0 ? 'text-red-600' : 'text-muted-foreground' },
+                    ].map(({ label, value, color }) => (
+                      <div key={label} className="bg-muted/40 rounded-xl p-4 text-center">
+                        <p className={`text-2xl font-black ${color}`}>{value}</p>
+                        <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mt-0.5">{label}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Holistic assessment */}
+                  {s.holistic_assessment && (
+                    <div className="bg-primary/5 border border-primary/10 rounded-2xl p-5">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-2">AI Assessment</p>
+                      <p className="text-sm text-foreground/80 font-medium leading-relaxed italic">"{s.holistic_assessment}"</p>
+                    </div>
+                  )}
+
+                  {/* Recommended actions */}
+                  {s.recommended_actions?.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Recommended Actions</p>
+                      <div className="space-y-2">
+                        {s.recommended_actions.map((action, i) => (
+                          <div key={i} className="flex items-start gap-3 bg-muted/30 rounded-xl p-3">
+                            <span className="w-5 h-5 rounded-full bg-primary/10 text-primary text-[10px] font-black flex items-center justify-center shrink-0 mt-0.5">{i + 1}</span>
+                            <p className="text-xs font-medium text-foreground/80">{action}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Key concerns */}
+                  {s.key_concerns?.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Key Concerns</p>
+                      <div className="space-y-1.5">
+                        {s.key_concerns.map((concern, i) => (
+                          <div key={i} className="flex items-start gap-2 text-xs font-medium text-amber-700">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-500" />
+                            {concern}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Rule results grouped by category */}
+                  <div className="space-y-4">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Rule Results</p>
+                    {Object.entries(grouped).map(([category, categoryRules]) => (
+                      <div key={category} className="space-y-2">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-primary/70 px-1">{category.replace(/_/g, ' ')}</p>
+                        <div className="space-y-1.5">
+                          {categoryRules.map((rule, i) => (
+                            <div key={i} className={`flex items-start gap-3 p-3 rounded-xl border ${rule.verdict === 'FAIL' ? (rule.blocking ? 'border-red-500/30 bg-red-500/[0.03]' : 'border-amber-500/20 bg-amber-500/[0.02]') : 'border-border/20 bg-muted/20'}`}>
+                              <div className="shrink-0 mt-0.5">
+                                {rule.verdict === 'PASS'
+                                  ? <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                                  : <XCircle className="w-4 h-4 text-red-500" />}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-xs font-black">{rule.rule_name?.replace(/_/g, ' ')}</span>
+                                  {rule.blocking && <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-red-500/10 text-red-600">Hard Stop</span>}
+                                  <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{rule.validation_type === 'llm' ? 'AI' : 'Rule'}</span>
+                                  <span className={`text-[9px] font-black ml-auto ${rule.verdict === 'PASS' ? 'text-emerald-600' : 'text-red-600'}`}>{(rule.score * 100).toFixed(0)}%</span>
+                                </div>
+                                <p className="text-[11px] text-muted-foreground font-medium mt-1 leading-relaxed">{rule.message}</p>
+                                {rule.missing_documentation?.length > 0 && (
+                                  <div className="mt-1.5 space-y-0.5">
+                                    {rule.missing_documentation.map((doc, j) => (
+                                      <p key={j} className="text-[10px] text-amber-600 font-medium">· {doc}</p>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
         </DialogContent>
       </Dialog>
     </div>

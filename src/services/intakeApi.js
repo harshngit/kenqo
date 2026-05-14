@@ -150,6 +150,41 @@ export const approveOrder = async (orderId, { overrideMissing = false } = {}) =>
   return data;
 };
 
+export const proceedToValidation = async (orderId, { csr_override = false, override_reason = null } = {}) => {
+  const response = await fetch(`${BASE_URL}/intake/orders/${orderId}/proceed-to-validation`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ csr_override, override_reason })
+  });
+  return handleResponse(response);
+};
+
+export const checkEligibility = async (orderId, data) => {
+  const response = await fetch(`${BASE_URL}/intake/orders/${orderId}/check-eligibility`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(data)
+  });
+  return handleResponse(response);
+};
+
+export const getEligibilityHistory = async (orderId) => {
+  const response = await fetch(`${BASE_URL}/intake/orders/${orderId}/eligibility-history`, {
+    method: 'GET',
+    headers: getHeaders()
+  });
+  return handleResponse(response);
+};
+
+export const resolveConflictsBatch = async (orderId, conflicts) => {
+  const response = await fetch(`${BASE_URL}/intake/orders/${orderId}/resolve-conflicts-batch`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ conflicts })
+  });
+  return handleResponse(response);
+};
+
 export const editField = async (orderId, fieldName, value, editReason) => {
   const response = await fetch(`${BASE_URL}/intake/orders/${orderId}/fields/${fieldName}`, {
     method: 'PATCH',
@@ -254,10 +289,11 @@ export const getPatientOrders = async (patientId) => {
   return handleResponse(response);
 };
 
-export const verifyEligibility = async (orderId) => {
-  const response = await fetch(`${BASE_URL}/intake/orders/${orderId}/verify-eligibility`, {
+export const verifyEligibility = async (data) => {
+  const response = await fetch(`${BASE_URL}/mock-pverify/eligibility-check`, {
     method: 'POST',
     headers: getHeaders(),
+    body: JSON.stringify(data)
   });
   return handleResponse(response);
 };
@@ -273,4 +309,21 @@ export const viewDocument = async (orderId, docId) => {
   }
   if (!response.ok) throw new Error('Failed to fetch document');
   return response.json();
+};
+
+export const revalidateFields = async (orderId, editedFields) => {
+  const response = await fetch(`${BASE_URL}/intake/orders/${orderId}/revalidate-fields`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ edited_fields: editedFields })
+  });
+  return handleResponse(response);
+};
+
+export const getValidationResults = async (orderId) => {
+  const response = await fetch(`${BASE_URL}/intake/orders/${orderId}/validation`, {
+    method: 'GET',
+    headers: getHeaders()
+  });
+  return handleResponse(response);
 };

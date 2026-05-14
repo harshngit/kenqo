@@ -41,7 +41,7 @@ import {
   DialogTitle,
 } from '../../../components/ui/dialog';
 
-import { deleteOrder, getOrderFields, listOrders, submitCSRDecision } from '../../../services/intakeApi';
+import { deleteOrder, getOrderFields, getOrderSummaryHistory, listOrders, submitCSRDecision } from '../../../services/intakeApi';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -212,11 +212,21 @@ const orderSortWeight = (order) => {
   return 4;
 };
 
-const getSummaryCounts = (order) => ({
-  red: order?.summary?.red ?? order?.field_breakdown?.red?.total ?? 0,
-  yellow: order?.summary?.yellow ?? order?.field_breakdown?.yellow?.total ?? 0,
-  green: order?.summary?.green ?? order?.field_breakdown?.green?.total ?? 0,
-});
+const getSummaryCounts = (order) => {
+  if (!order) return { red: 0, yellow: 0, green: 0 };
+  
+  // The structure can be order.summary.missing.green.count 
+  // or order.summary.green.count (if summary is passed directly or from backend)
+  const summary = order.summary || order; // handle both order object and summary object
+  const missing = summary?.missing;
+  const breakdown = order.field_breakdown;
+
+  return {
+    red: missing?.red?.count ?? summary?.red?.count ?? (typeof summary?.red === 'number' ? summary.red : null) ?? breakdown?.red?.total ?? 0,
+    yellow: missing?.yellow?.count ?? summary?.yellow?.count ?? (typeof summary?.yellow === 'number' ? summary.yellow : null) ?? breakdown?.yellow?.total ?? 0,
+    green: missing?.green?.count ?? summary?.green?.count ?? (typeof summary?.green === 'number' ? summary.green : null) ?? breakdown?.green?.total ?? 0,
+  };
+};
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -229,6 +239,8 @@ const IntakeOrders = () => {
   const [deletingIds, setDeletingIds] = useState(new Set());
   const [orderSummaries, setOrderSummaries] = useState({});
   const [summaryDialogOrder, setSummaryDialogOrder] = useState(null);
+  const [isFetchingDialogSummary, setIsFetchingDialogSummary] = useState(false);
+  const [dialogSummaryData, setDialogSummaryData] = useState({ text: '', counts: { red: 0, yellow: 0, green: 0 } });
   const activeFilterLabel = FILTER_OPTIONS.find((option) => option.value === statusFilter)?.label || 'All Orders';
 
   const fetchOrders = useCallback(async () => {
@@ -302,6 +314,52 @@ const IntakeOrders = () => {
 
   // Counts for header summary
   const csrCount = useMemo(() => orders.filter(needsReviewAction).length, [orders]);
+
+  useEffect(() => {
+    if (!summaryDialogOrder) {
+      setDialogSummaryData({ text: '', counts: { red: 0, yellow: 0, green: 0 } });
+      return;
+    }
+
+    let cancelled = false;
+    const orderId = summaryDialogOrder.order_id;
+
+    // Set initial data from the order object
+    setDialogSummaryData({
+      text: summaryDialogOrder.summary_text || '',
+      counts: orderSummaries[orderId] ? getSummaryCounts({ summary: orderSummaries[orderId] }) : getSummaryCounts(summaryDialogOrder)
+    });
+
+    setIsFetchingDialogSummary(true);
+
+    // Fetch fresh data
+    Promise.all([
+      getOrderFields(orderId).catch(() => null),
+      getOrderSummaryHistory(orderId).catch(() => null)
+    ]).then(([fieldsData, historyData]) => {
+      if (cancelled) return;
+
+      const history = (historyData?.history || []).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+      const latestSummaryText = history[0]?.summary_text || summaryDialogOrder.summary_text || '';
+      const latestCounts = getSummaryCounts({ summary: fieldsData?.summary || summaryDialogOrder.summary });
+
+      setDialogSummaryData({
+        text: latestSummaryText,
+        counts: latestCounts
+      });
+
+      // Also update the list-wide cache
+      if (fieldsData?.summary) {
+        setOrderSummaries(prev => ({ ...prev, [orderId]: fieldsData.summary }));
+      }
+    }).finally(() => {
+      if (!cancelled) setIsFetchingDialogSummary(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [summaryDialogOrder, orderSummaries]);
 
   useEffect(() => {
     const ordersNeedingSummary = filteredOrders.filter(
@@ -443,7 +501,7 @@ const IntakeOrders = () => {
                     const mergeDecision = displayStatus.key === 'merge_decision';
                     const canDeleteOrder = order.status !== 'complete';
                     const isDeleting = deletingIds.has(order.order_id);
-                    const summaryCounts = orderSummaries[order.order_id] || getSummaryCounts(order);
+                    const summaryCounts = getSummaryCounts(orderSummaries[order.order_id] || order);
                     return (
                       <TableRow
                         key={order.order_id}
@@ -632,27 +690,28 @@ const IntakeOrders = () => {
       <Dialog open={Boolean(summaryDialogOrder)} onOpenChange={(open) => !open && setSummaryDialogOrder(null)}>
         <DialogContent className="sm:max-w-xl rounded-3xl">
           <DialogHeader>
-            <DialogTitle className="text-left text-lg font-black tracking-tight">
-              Summary{summaryDialogOrder?.patient_name ? ` for ${summaryDialogOrder.patient_name}` : ''}
+            <DialogTitle className="text-left text-lg font-black tracking-tight flex items-center justify-between">
+              <span>Summary{summaryDialogOrder?.patient_name ? ` for ${summaryDialogOrder.patient_name}` : ''}</span>
+              {isFetchingDialogSummary && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             {summaryDialogOrder && (
               <div className="inline-flex flex-wrap items-center gap-2">
                 <span className="inline-flex rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-mono text-emerald-700">
-                  G: {(orderSummaries[summaryDialogOrder.order_id] || getSummaryCounts(summaryDialogOrder)).green}
+                  G: {dialogSummaryData.counts.green}
                 </span>
                 <span className="inline-flex rounded bg-amber-50 px-2 py-0.5 text-[10px] font-mono text-amber-700">
-                  Y: {(orderSummaries[summaryDialogOrder.order_id] || getSummaryCounts(summaryDialogOrder)).yellow}
+                  Y: {dialogSummaryData.counts.yellow}
                 </span>
                 <span className="inline-flex rounded bg-red-50 px-2 py-0.5 text-[10px] font-mono text-red-700">
-                  R: {(orderSummaries[summaryDialogOrder.order_id] || getSummaryCounts(summaryDialogOrder)).red}
+                  R: {dialogSummaryData.counts.red}
                 </span>
               </div>
             )}
             <div className="max-h-[60vh] overflow-y-auto rounded-2xl border border-border/40 bg-muted/[0.03] p-4">
               <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">
-                {summaryDialogOrder?.summary_text || 'Summary unavailable.'}
+                {dialogSummaryData.text || (isFetchingDialogSummary ? 'Fetching latest summary...' : 'Summary unavailable.')}
               </p>
             </div>
           </div>
