@@ -583,14 +583,23 @@ const SuperAdminExtractionSchema = () => {
   };
 
   const extractionSchema = schema?.extraction_schema || {};
-  const allFields = Object.entries(extractionSchema).flatMap(([, section]) =>
+
+  // Get ALL fields (active + inactive)
+  const allFieldsIncludingInactive = Object.entries(extractionSchema).flatMap(([, section]) =>
     Object.entries(section)
-      .filter(([k, v]) => k !== '_meta' && typeof v === 'object' && v !== null && v.active !== false)
+      .filter(([k, v]) => k !== '_meta' && typeof v === 'object' && v !== null)
       .map(([, v]) => v)
   );
+
+  // Active fields only
+  const allFields = allFieldsIncludingInactive.filter((f) => f.active !== false);
+
+  // Inactive fields
+  const inactiveFields = allFieldsIncludingInactive.filter((f) => f.active === false);
+
+  // Criticality counts (active fields only)
   const redCount = allFields.filter((f) => f.criticality === 'RED').length;
   const yellowCount = allFields.filter((f) => f.criticality === 'YELLOW').length;
-  const greenCount = allFields.filter((f) => f.criticality === 'GREEN').length;
 
   if (isInitialLoading) {
     return (
@@ -694,17 +703,48 @@ const SuperAdminExtractionSchema = () => {
       {!isFetching && !fetchError && schema && (
         <>
           {/* Stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             {[
-              { label: 'Total Fields', value: allFields.length, cls: 'text-foreground' },
-              { label: 'Critical (RED)', value: redCount, cls: 'text-red-500' },
-              { label: 'Important (YELLOW)', value: yellowCount, cls: 'text-amber-500' },
-              { label: 'Optional (GREEN)', value: greenCount, cls: 'text-emerald-500' },
+              {
+                label: 'Total Fields',
+                value: allFieldsIncludingInactive.length,
+                cls: 'text-foreground',
+                sublabel: null
+              },
+              {
+                label: 'Active Fields',
+                value: allFields.length,
+                cls: 'text-emerald-600',
+                sublabel: 'Currently extracted'
+              },
+              {
+                label: 'Inactive Fields',
+                value: inactiveFields.length,
+                cls: 'text-slate-400',
+                sublabel: 'Skipped during extraction'
+              },
+              {
+                label: 'Critical (RED)',
+                value: redCount,
+                cls: 'text-red-500',
+                sublabel: 'Must have'
+              },
+              {
+                label: 'Important (YELLOW)',
+                value: yellowCount,
+                cls: 'text-amber-500',
+                sublabel: 'Should have'
+              },
             ].map((s) => (
               <Card key={s.label} className="border border-border/50 rounded-xl shadow-sm">
                 <CardContent className="p-4">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5">{s.label}</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5">
+                    {s.label}
+                  </p>
                   <p className={`text-2xl font-black ${s.cls}`}>{s.value}</p>
+                  {s.sublabel && (
+                    <p className="text-[10px] text-muted-foreground mt-1">{s.sublabel}</p>
+                  )}
                 </CardContent>
               </Card>
             ))}

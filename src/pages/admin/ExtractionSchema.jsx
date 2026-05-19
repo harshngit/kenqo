@@ -35,10 +35,14 @@ const ExtractionSchema = () => {
     setTimeout(() => setSaved(false), 2000);
   };
 
+  const allFieldsIncludingInactive = fields;
+  const allFields = allFieldsIncludingInactive.filter((f) => f.active !== false);
+  const inactiveFields = allFieldsIncludingInactive.filter((f) => f.active === false);
+
   const counts = {
-    RED:    fields.filter(f => f.criticality === 'RED').length,
-    YELLOW: fields.filter(f => f.criticality === 'YELLOW').length,
-    GREEN:  fields.filter(f => f.criticality === 'GREEN').length,
+    RED:    allFields.filter(f => f.criticality === 'RED').length,
+    YELLOW: allFields.filter(f => f.criticality === 'YELLOW').length,
+    GREEN:  allFields.filter(f => f.criticality === 'GREEN').length,
   };
 
   return (
@@ -65,12 +69,50 @@ const ExtractionSchema = () => {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
-        {Object.entries(counts).map(([key, val]) => (
-          <div key={key} className={`border rounded-xl p-4 ${criticalityConfig[key].color}`}>
-            <p className="text-[10px] font-black uppercase tracking-widest mb-1 opacity-70">{key} Fields</p>
-            <p className="text-2xl font-black">{val}</p>
-          </div>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        {[
+          {
+            label: 'Total Fields',
+            value: allFieldsIncludingInactive.length,
+            cls: 'text-foreground',
+            sublabel: null
+          },
+          {
+            label: 'Active Fields',
+            value: allFields.length,
+            cls: 'text-emerald-600',
+            sublabel: 'Currently extracted'
+          },
+          {
+            label: 'Inactive Fields',
+            value: inactiveFields.length,
+            cls: 'text-slate-400',
+            sublabel: 'Skipped during extraction'
+          },
+          {
+            label: 'Critical (RED)',
+            value: counts.RED,
+            cls: 'text-red-500',
+            sublabel: 'Must have'
+          },
+          {
+            label: 'Important (YELLOW)',
+            value: counts.YELLOW,
+            cls: 'text-amber-500',
+            sublabel: 'Should have'
+          },
+        ].map((s) => (
+          <Card key={s.label} className="border border-border/50 rounded-xl shadow-sm">
+            <CardContent className="p-4">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5">
+                {s.label}
+              </p>
+              <p className={`text-2xl font-black ${s.cls}`}>{s.value}</p>
+              {s.sublabel && (
+                <p className="text-[10px] text-muted-foreground mt-1">{s.sublabel}</p>
+              )}
+            </CardContent>
+          </Card>
         ))}
       </div>
 
