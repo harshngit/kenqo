@@ -1,4 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom';
+import { createPortal } from 'react-dom';
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
 import {
@@ -8,7 +9,6 @@ import {
   AlertCircle,
   X,
   FileText,
-  File,
   Trash2,
   Edit2,
   RotateCcw,
@@ -23,6 +23,7 @@ import {
   ExternalLink,
   Upload,
   User,
+  File as FileIcon,
   BriefcaseMedical,
   ShieldCheck,
   Pill,
@@ -220,18 +221,58 @@ const MetaLabel = ({ children }) => (
   </span>
 );
 
-// Inline tooltip that appears above on hover
-const HoverTip = ({ icon, label, content, colorClass = 'text-muted-foreground/30 hover:text-muted-foreground/70' }) => (
-  <div className="relative group/tip">
-    <button className={`transition-colors ${colorClass}`} type="button" title={label}>
-      {icon}
-    </button>
-    <div className="pointer-events-none absolute bottom-full left-0 mb-2 ml-2 w-56 bg-popover border border-border/40 rounded-xl px-3 py-2.5 text-[11px] text-muted-foreground leading-relaxed shadow-xl opacity-0 group-hover/tip:opacity-100 transition-opacity z-50 whitespace-normal">
-      <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/50 block mb-1">{label}</span>
-      {content}
-    </div>
-  </div>
-);
+const HoverTip = ({ icon, label, content, colorClass = 'text-muted-foreground/30 hover:text-muted-foreground/70' }) => {
+  const triggerRef = useRef(null);
+  const [position, setPosition] = useState(null);
+
+  const show = () => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const width = Math.min(320, Math.max(224, window.innerWidth - 24));
+    const left = Math.min(
+      Math.max(12, rect.left + rect.width / 2 - width / 2),
+      window.innerWidth - width - 12
+    );
+    const placeBelow = rect.top < 180;
+
+    setPosition({
+      width,
+      left,
+      top: placeBelow ? rect.bottom + 10 : rect.top - 10,
+      transform: placeBelow ? 'none' : 'translateY(-100%)',
+    });
+  };
+
+  const hide = () => setPosition(null);
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        className={`transition-colors ${colorClass}`}
+        type="button"
+        title={label}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onFocus={show}
+        onBlur={hide}
+      >
+        {icon}
+      </button>
+      {position && createPortal(
+        <div
+          className="pointer-events-none fixed z-[9999] rounded-xl border border-border/40 bg-popover px-3 py-2.5 text-[11px] leading-relaxed text-muted-foreground shadow-2xl whitespace-normal"
+          style={position}
+        >
+          <span className="mb-1 block text-[9px] font-black uppercase tracking-widest text-muted-foreground/50">{label}</span>
+          {content}
+        </div>,
+        document.body
+      )}
+    </>
+  );
+};
 
 // â”€â”€â”€ SEMANTIC TAB DEFINITIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -324,10 +365,65 @@ const formatList = (items, fallback = 'None listed') => {
 };
 
 const formatFileSize = (bytes) => {
+  if (!Number.isFinite(Number(bytes))) return 'Unknown size';
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
   return (bytes / 1048576).toFixed(1) + ' MB';
 };
+
+const EMPTY_DISPLAY = '-';
+
+const isBlankValue = (value) =>
+  value === null ||
+  value === undefined ||
+  (typeof value === 'string' && value.trim() === '');
+
+const isPresentValue = (value) => !isBlankValue(value);
+
+const formatDisplayValue = (value, fallback = EMPTY_DISPLAY) => {
+  if (isBlankValue(value)) return fallback;
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (Array.isArray(value)) return value.length ? value.map((item) => formatDisplayValue(item, '')).filter(Boolean).join(', ') : fallback;
+  return String(value);
+};
+
+const normalizeComparableValue = (value) => {
+  if (isBlankValue(value)) return '';
+  if (typeof value === 'boolean') return value ? 'yes' : 'no';
+  const normalized = String(value).trim().toLowerCase();
+  if (['n', 'no', 'false'].includes(normalized)) return 'no';
+  if (['y', 'yes', 'true'].includes(normalized)) return 'yes';
+  return normalized;
+};
+
+const getConflictOptionValue = (option) => (
+  option && typeof option === 'object' && !Array.isArray(option)
+    ? option.value ?? option.extracted_value ?? option.text ?? option.label
+    : option
+);
+
+const hasOnlyEquivalentConflictValues = (field) => {
+  const conflictValues = field?.conflict_values;
+  const options = Array.isArray(conflictValues)
+    ? conflictValues
+    : Array.isArray(conflictValues?.options)
+      ? conflictValues.options
+      : [field?.conflict_details?.option_1, field?.conflict_details?.option_2];
+  const normalized = options
+    .map(getConflictOptionValue)
+    .filter(isPresentValue)
+    .map(normalizeComparableValue)
+    .filter(Boolean);
+
+  return normalized.length > 1 && new Set(normalized).size === 1;
+};
+
+const isConflictField = (field) =>
+  (field?.status === 'conflict' || field?.has_conflict) && !hasOnlyEquivalentConflictValues(field);
+
+const isBrowserFile = (value) => (
+  typeof globalThis.File === 'function' && value instanceof globalThis.File
+);
 
 const getConflictCount = (order) =>
   Number(order?.extraction?.conflict_count || order?.conflict_count || 0);
@@ -484,7 +580,7 @@ const getFieldsSummary = (payload, fieldMap) => {
 
   values.forEach((field) => {
     const hasValue = !(field?.not_found || field?.value === null || field?.value === undefined || field?.value === '');
-    const isConflict = field?.status === 'conflict' || field?.has_conflict;
+    const isConflict = isConflictField(field);
     const confidence = parseFloat(field?.confidence || 0);
 
     if (isConflict) conflicts += 1;
@@ -540,9 +636,7 @@ const getNestedValue = (source, paths) => {
 
 const isMissingField = (field) =>
   field?.not_found ||
-  field?.value === null ||
-  field?.value === undefined ||
-  field?.value === '';
+  isBlankValue(field?.value);
 
 const getFieldCriticality = (field) =>
   String(
@@ -1025,7 +1119,7 @@ const OrderDetail = () => {
   };
 
   const submitAddedDocuments = async () => {
-    const validFiles = uploadModal.files.filter(f => f.file);
+    const validFiles = uploadModal.files.filter(f => isBrowserFile(f.file));
     if (validFiles.length === 0) {
       toast.error('Please upload at least one document');
       return;
@@ -1245,7 +1339,7 @@ const OrderDetail = () => {
   };
 
   const handleEditSave = async () => {
-    if (!editModal.newValue || !editModal.reason) { toast.error('Value and reason are required'); return; }
+    if (!isPresentValue(editModal.newValue) || !editModal.reason?.trim()) { toast.error('Value and reason are required'); return; }
     setIsSubmittingEdit(true);
     try {
       await editField(orderId, editModal.fieldName, editModal.newValue, editModal.reason);
@@ -1298,7 +1392,7 @@ const OrderDetail = () => {
     if (Array.isArray(conflictValues)) return conflictValues;
     if (Array.isArray(conflictValues?.options)) return conflictValues.options;
 
-    const legacyOptions = [field?.conflict_details?.option_1, field?.conflict_details?.option_2].filter(Boolean);
+    const legacyOptions = [field?.conflict_details?.option_1, field?.conflict_details?.option_2].filter(isPresentValue);
     return legacyOptions;
   };
 
@@ -1444,7 +1538,7 @@ const OrderDetail = () => {
       ...wrapper,
     }));
     const missingFields = fieldEntries.filter(isMissingField);
-    const conflictFields = fieldEntries.filter((field) => field?.status === 'conflict' || field?.has_conflict);
+    const conflictFields = fieldEntries.filter(isConflictField);
 
     const missingFromBreakdown = (level) => coerceFieldNames(getNestedValue(
       { order, fieldBreakdown },
@@ -1511,13 +1605,15 @@ const OrderDetail = () => {
       yellow: structuredMissingFields.yellow.length ? structuredMissingFields.yellow : (yellowMissing.length ? yellowMissing : fallbackMissingByLevel('yellow')),
       green: structuredMissingFields.green.length ? structuredMissingFields.green : (greenMissing.length ? greenMissing : fallbackMissingByLevel('green')),
     };
-    const finalConflicts = structuredConflictFields.length ? structuredConflictFields : (conflictNames.length ? conflictNames : conflictFields.map((field) => field.fieldName));
+    const conflictNameCandidates = structuredConflictFields.length ? structuredConflictFields : (conflictNames.length ? conflictNames : conflictFields.map((field) => field.fieldName));
+    const finalConflicts = conflictNameCandidates
+      .filter((fieldName) => !normalizedFieldMap[fieldName] || isConflictField(normalizedFieldMap[fieldName]));
 
     return {
       total: Number(totalFromBreakdown ?? normalizedFieldsSummary.total ?? fieldEntries.length ?? 0),
       extracted: Number(extractedCountFromBreakdown ?? fieldEntries.filter((field) => !isMissingField(field)).length ?? 0),
       conflicts: finalConflicts,
-      conflictCount: Number(structuredConflicts?.count ?? getConflictCount(order) ?? finalConflicts.length ?? 0),
+      conflictCount: Number(conflictNameCandidates.length ? finalConflicts.length : (structuredConflicts?.count ?? getConflictCount(order) ?? 0)),
       missing: {
         red: finalMissing.red,
         yellow: finalMissing.yellow,
@@ -1574,7 +1670,7 @@ const OrderDetail = () => {
     const allFields = tab.agents.flatMap(key => groupedFields[key] || []);
     let red = 0, yellow = 0;
     allFields.forEach(f => {
-      if (f.status === 'conflict' || !f.value) { red++; return; }
+      if (isConflictField(f) || !isPresentValue(f.value)) { red++; return; }
       const conf = parseFloat(f.confidence || 0);
       if (conf < 0.60) red++;
       else if (conf < 0.85) yellow++;
@@ -1583,7 +1679,7 @@ const OrderDetail = () => {
   };
 
   const getFieldBorderColor = (field) => {
-    if (field.status === 'conflict' || !field.value) return 'bg-red-500';
+    if (isConflictField(field) || !isPresentValue(field.value)) return 'bg-red-500';
     const conf = parseFloat(field.confidence || 0);
     if (conf >= 0.85) return 'bg-emerald-500';
     if (conf >= 0.60) return 'bg-amber-500';
@@ -1591,10 +1687,8 @@ const OrderDetail = () => {
   };
 
   const formatFieldValue = (wrapper) => {
-    if (wrapper.not_found || wrapper.value === null || wrapper.value === undefined) return null;
-    if (typeof wrapper.value === 'boolean') return wrapper.value ? 'Yes' : 'No';
-    if (Array.isArray(wrapper.value)) return wrapper.value.join(', ');
-    return String(wrapper.value);
+    if (wrapper.not_found || isBlankValue(wrapper.value)) return null;
+    return formatDisplayValue(wrapper.value, null);
   };
 
   const getHcpcsSuggestions = (field) => {
@@ -1626,10 +1720,10 @@ const OrderDetail = () => {
   };
 
   const sortFields = (fieldList) => [...fieldList].sort((a, b) => {
-    if (a.status === 'conflict' && b.status !== 'conflict') return -1;
-    if (b.status === 'conflict' && a.status !== 'conflict') return 1;
-    if (!a.value && b.value) return 1;
-    if (a.value && !b.value) return -1;
+    if (isConflictField(a) && !isConflictField(b)) return -1;
+    if (isConflictField(b) && !isConflictField(a)) return 1;
+    if (!isPresentValue(a.value) && isPresentValue(b.value)) return 1;
+    if (isPresentValue(a.value) && !isPresentValue(b.value)) return -1;
     return (a.confidence || 0) - (b.confidence || 0);
   });
 
@@ -1703,7 +1797,7 @@ const OrderDetail = () => {
 
   const FieldEditorInline = ({ field, orderId, onSaved, value, onChange }) => {
     const [saving, setSaving] = useState(false);
-    const [internalValue, setInternalValue] = useState(field.value || '');
+    const [internalValue, setInternalValue] = useState(isBlankValue(field.value) ? '' : String(field.value));
 
     const displayValue = value !== undefined ? value : internalValue;
 
@@ -1944,10 +2038,18 @@ const OrderDetail = () => {
       try {
         const conflictsToResolve = (incompleteDialogData.conflicts || []).map(conflict => ({
           field_name: conflict.field_name,
-          chosen_value: String(conflict.values?.[0] || conflict.options?.[0] || conflict.value || ''),
+          chosen_value: String(
+            isPresentValue(conflict.values?.[0])
+              ? conflict.values[0]
+              : isPresentValue(conflict.options?.[0])
+                ? conflict.options[0]
+                : isPresentValue(conflict.value)
+                  ? conflict.value
+                  : ''
+          ),
           resolution_type: 'auto_first',
           edit_reason: globalReason.trim()
-        }));
+        })).filter((conflict) => isPresentValue(conflict.chosen_value));
 
         await resolveConflictsBatch(orderId, conflictsToResolve);
 
@@ -3431,7 +3533,7 @@ const OrderDetail = () => {
                     const source = getFieldSourceLabel(field);
                     const borderColor = getFieldBorderColor(field);
                     const conf = Math.round((field.confidence || 0) * 100);
-                    const isConflictField = field.has_conflict || field.status === 'conflict';
+                    const fieldHasConflict = isConflictField(field);
                     const rawExtractions = getRawExtractions(field);
                     const isHcpcsField = field.fieldName === 'hcpcs_code';
                     const hcpcsSuggestions = getHcpcsSuggestions(field).slice(0, 3);
@@ -3439,12 +3541,30 @@ const OrderDetail = () => {
                     const showHcpcsSuggestions = hasPendingHcpcsSuggestions(field);
                     const showHcpcsVerification = isHcpcsField && displayValue && hcpcsVerification;
                     const verificationVerdict = hcpcsVerification?.verdict;
+                    const reviewReason =
+                      field.csr_review_reason ||
+                      field.review_reason ||
+                      rawExtractions.csr_review_reason ||
+                      rawExtractions.review_reason ||
+                      field.reasoning;
+                    const reviewTipContent = (
+                      <div className="space-y-2">
+                        {field.needs_csr_review && (
+                          <p>{reviewReason || 'This field needs CSR review before the order can proceed.'}</p>
+                        )}
+                        {showHcpcsSuggestions && (
+                          <p>
+                            HCPCS suggestions are available. Review the suggested code options and choose the best match.
+                          </p>
+                        )}
+                      </div>
+                    );
 
                     return (
                       <div
                         key={field.fieldName}
-                        className={`relative overflow-hidden rounded-xl border border-border/20 bg-card px-4 py-3 pl-6 space-y-2 ${isConflictField ? 'cursor-pointer hover:border-red-500/30 hover:bg-red-500/[0.02]' : ''}`}
-                        onClick={isConflictField ? () => openConflictModal(field) : undefined}
+                        className={`relative overflow-hidden rounded-xl border border-border/20 bg-card px-4 py-3 pl-6 space-y-2 ${fieldHasConflict ? 'cursor-pointer hover:border-red-500/30 hover:bg-red-500/[0.02]' : ''}`}
+                        onClick={fieldHasConflict ? () => openConflictModal(field) : undefined}
                       >
                         <span
                           aria-hidden="true"
@@ -3456,15 +3576,20 @@ const OrderDetail = () => {
                             <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 truncate">
                               {formatFieldName(field.fieldName)}
                             </label>
-                            {isConflictField && (
+                            {fieldHasConflict && (
                               <span className="text-[8px] font-black bg-red-500 text-white px-1.5 py-0.5 rounded tracking-widest uppercase shrink-0">Conflict</span>
                             )}
                             {(field.needs_csr_review || showHcpcsSuggestions) && (
-                              <AlertCircle className="w-3 h-3 text-amber-500 shrink-0" title="Needs CSR Review" />
+                              <HoverTip
+                                icon={<AlertCircle className="w-3 h-3" />}
+                                label={showHcpcsSuggestions ? 'Review Needed' : 'CSR Review'}
+                                content={reviewTipContent}
+                                colorClass="text-amber-500 hover:text-amber-600 shrink-0"
+                              />
                             )}
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
-                            {isConflictField && (
+                            {fieldHasConflict && (
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -3483,7 +3608,7 @@ const OrderDetail = () => {
                               className="w-6 h-6 rounded-md hover:bg-muted/60"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setEditModal({ open: true, fieldName: field.fieldName, currentValue: field.value, newValue: String(field.value || ''), reason: '' });
+                                setEditModal({ open: true, fieldName: field.fieldName, currentValue: field.value, newValue: isBlankValue(field.value) ? '' : String(field.value), reason: '' });
                               }}
                             >
                               <Edit2 className="w-3 h-3" />
@@ -3507,12 +3632,12 @@ const OrderDetail = () => {
 
                         {/* Value box */}
                         <div className={`rounded-lg border px-3 py-2 text-sm font-medium min-h-[36px] leading-snug ${
-                          !displayValue
+                          !isPresentValue(displayValue)
                             ? 'bg-red-500/5 border-red-500/20 text-muted-foreground/40 italic'
                             : 'bg-muted/20 border-border/30 text-foreground'
                         }`}>
                           <div className="flex flex-wrap items-center gap-2">
-                            <span>{displayValue || 'Not found'}</span>
+                            <span>{isPresentValue(displayValue) ? displayValue : 'Not found'}</span>
                             {showHcpcsVerification && verificationVerdict === 'CORRECT' && (
                               <span title={hcpcsVerification.reasoning || ''} className="inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-600">
                                 ✓ Verified
@@ -3703,7 +3828,7 @@ const OrderDetail = () => {
                 <thead><tr className="text-muted-foreground/60 border-b border-red-500/10"><th className="text-left py-1 font-black">FIELD</th><th className="text-left py-1 font-black">EXPECTED</th><th className="text-left py-1 font-black">EXTRACTED</th></tr></thead>
                 <tbody className="divide-y divide-red-500/10">
                   {Object.entries(order.identity_mismatch_details || {}).map(([f, d]) => (
-                    <tr key={f}><td className="py-2 font-black uppercase tracking-tighter">{f}</td><td className="py-2 font-bold">{d.expected || 'â€”'}</td><td className="py-2 font-bold text-red-600">{d.extracted || 'â€”'}</td></tr>
+                    <tr key={f}><td className="py-2 font-black uppercase tracking-tighter">{f}</td><td className="py-2 font-bold">{formatDisplayValue(d.expected)}</td><td className="py-2 font-bold text-red-600">{formatDisplayValue(d.extracted)}</td></tr>
                   ))}
                 </tbody>
               </table>
@@ -4192,7 +4317,7 @@ const OrderDetail = () => {
       )}
 
       {/* ADD DOCUMENTS MODAL */}
-      <Dialog open={uploadModal.open} onOpenChange={(v) => setUploadModal(v ? { ...uploadModal, open: true } : { open: false, files: [] })}>
+      <Dialog open={uploadModal.open} onOpenChange={(v) => setUploadModal((prev) => (v ? { ...prev, open: true } : { open: false, files: [] }))}>
         <DialogContent className="max-w-3xl rounded-[2rem] border-2 border-border/40 p-8">
           <DialogHeader className="space-y-2">
             <DialogTitle className="text-xl font-black tracking-tight uppercase tracking-widest">Add Documents</DialogTitle>
@@ -4216,12 +4341,12 @@ const OrderDetail = () => {
             {uploadModal.files.length > 0 && (
               <div className="space-y-3">
                 <div className="flex items-center gap-2 px-1">
-                  <File className="w-4 h-4 text-primary" />
+                  <FileIcon className="w-4 h-4 text-primary" />
                   <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{uploadModal.files.length} File{uploadModal.files.length > 1 ? 's' : ''} Selected</span>
                 </div>
                 <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
-                  {uploadModal.files.map((item, i) => (
-                    <Card key={`${item.file.name}-${i}`} className="rounded-2xl p-4 bg-card flex items-center gap-4">
+                  {uploadModal.files.filter((item) => isBrowserFile(item.file)).map((item, i) => (
+                    <Card key={`${item.file.name}-${item.file.lastModified || i}-${i}`} className="rounded-2xl p-4 bg-card flex items-center gap-4">
                       <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
                         <FileText className="w-5 h-5" />
                       </div>
@@ -4251,7 +4376,7 @@ const OrderDetail = () => {
 
           <DialogFooter className="gap-3">
             <Button variant="ghost" onClick={() => setUploadModal({ open: false, files: [] })} disabled={isAddingDocuments} className="h-11 rounded-xl font-black uppercase tracking-widest text-[10px]">Cancel</Button>
-            <Button onClick={submitAddedDocuments} disabled={isAddingDocuments || uploadModal.files.length === 0} className="h-11 rounded-xl font-black uppercase tracking-widest text-[10px]">
+            <Button onClick={submitAddedDocuments} disabled={isAddingDocuments || uploadModal.files.filter((item) => isBrowserFile(item.file)).length === 0} className="h-11 rounded-xl font-black uppercase tracking-widest text-[10px]">
               {isAddingDocuments ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Add Documents'}
             </Button>
           </DialogFooter>
@@ -4326,7 +4451,7 @@ const OrderDetail = () => {
                 <CardContent className="p-6 space-y-3">
                   <div className="mb-2 text-xs font-bold text-blue-700">{'\u2728 AI Recommendation'}</div>
                   <div className="mb-2 text-lg font-semibold text-blue-900">
-                    {String(getAiRecommendation(conflictModal.field)?.recommended_value || '—')}
+                    {formatDisplayValue(getAiRecommendation(conflictModal.field)?.recommended_value)}
                   </div>
                   <p className="mb-2 max-h-64 overflow-y-auto pr-1 text-sm text-blue-800">
                     {getAiRecommendation(conflictModal.field)?.reasoning}
@@ -4358,14 +4483,15 @@ const OrderDetail = () => {
               <h3 className="text-sm font-semibold mb-2">Other Options</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {getConflictOptions(conflictModal.field).map((option, index) => {
+                  const optionValue = getConflictOptionValue(option);
                   const aiRecommendedValue = getAiRecommendation(conflictModal.field)?.recommended_value;
-                  const isAiRecommended = aiRecommendedValue != null && option?.value === aiRecommendedValue;
+                  const isAiRecommended = aiRecommendedValue != null && normalizeComparableValue(optionValue) === normalizeComparableValue(aiRecommendedValue);
                   return (
-                    <Card key={`${option?.value || 'option'}-${index}`} className="border border-border/40 rounded-2xl">
+                    <Card key={`${formatDisplayValue(optionValue, 'option')}-${index}`} className="border border-border/40 rounded-2xl">
                       <CardContent className="p-5 space-y-3">
                         <div className="flex items-start justify-between gap-3">
                           <div className="space-y-1 min-w-0">
-                            <div className="text-base font-medium break-words">{String(option?.value || '—')}</div>
+                            <div className="text-base font-medium break-words">{formatDisplayValue(optionValue)}</div>
                             <div className="text-xs text-muted-foreground">
                               From {option?.source?.doc_type || option?.doc_type || 'Unknown source'}
                             </div>
@@ -4384,7 +4510,7 @@ const OrderDetail = () => {
                           variant="outline"
                           onClick={() => submitConflictResolution({
                             field: conflictModal.field,
-                            chosenValue: option?.value,
+                            chosenValue: optionValue,
                             editReason: 'Resolved conflict based on manual selection',
                             resolutionType: `picked_option_${index + 1}`,
                           })}

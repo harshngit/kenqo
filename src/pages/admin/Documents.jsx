@@ -395,6 +395,7 @@ const QuestionnaireDialog = ({ open, document, questionnaire, loading, submittin
   const isPromptStep = currentStep >= questions.length;
   const currentQuestion = questions[currentStep];
   const totalSteps = questions.length + 1;
+  const hasPrompt = customPrompt.trim().length > 0;
 
   const setAnswer = (questionId, value) => {
     onAnswersChange((previous) => ({ ...previous, [questionId]: value }));
@@ -587,7 +588,7 @@ const QuestionnaireDialog = ({ open, document, questionnaire, loading, submittin
                   <div className="space-y-2">
                     <p className="text-base font-black leading-relaxed">Please enter your prompt for better results</p>
                     <p className="text-xs font-medium text-muted-foreground">
-                      Add optional extraction guidance or context before starting extraction.
+                      Add extraction guidance or context before starting extraction.
                     </p>
                   </div>
                   <Textarea
@@ -623,10 +624,14 @@ const QuestionnaireDialog = ({ open, document, questionnaire, loading, submittin
           </Button>
           <Button
             className="rounded-xl font-bold"
-            disabled={loading || submitting || !questionnaire?.questionnaire_id}
+            disabled={loading || submitting || !questionnaire?.questionnaire_id || (isPromptStep && !hasPrompt)}
             onClick={() => {
               if (!isPromptStep) {
                 setCurrentStep((step) => Math.min(totalSteps - 1, step + 1));
+                return;
+              }
+              if (!hasPrompt) {
+                toast.error('Prompt is required');
                 return;
               }
               onSubmit();
@@ -886,6 +891,11 @@ const AdminDocuments = () => {
       toast.error('Questionnaire ID is missing');
       return;
     }
+    const customPrompt = questionnaireState.customPrompt.trim();
+    if (!customPrompt) {
+      toast.error('Prompt is required');
+      return;
+    }
 
     setQuestionnaireState((previous) => ({ ...previous, submitting: true }));
     try {
@@ -898,7 +908,7 @@ const AdminDocuments = () => {
         body: JSON.stringify({
           user_id: userId,
           answers: questionnaireState.answers,
-          custom_prompt: questionnaireState.customPrompt,
+          custom_prompt: customPrompt,
         }),
       });
       const data = await response.json().catch(() => ({}));

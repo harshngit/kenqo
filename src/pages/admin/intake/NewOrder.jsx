@@ -10,7 +10,7 @@ import {
   Plus,
   Upload,
   X,
-  File,
+  File as FileIcon,
   ArrowLeft,
   ArrowRight,
   Loader2,
@@ -54,6 +54,10 @@ const DISEASE_LABELS = {
   wound_care: 'Wound Care',
   oncology: 'Oncology',
 };
+
+const isBrowserFile = (value) => (
+  typeof globalThis.File === 'function' && value instanceof globalThis.File
+);
 
 const NewOrder = () => {
   const navigate = useNavigate();
@@ -175,7 +179,7 @@ const NewOrder = () => {
 
     if (unique.length > 0) {
       setFiles(prev => [
-        ...prev.filter(f => f.file instanceof File),
+        ...prev.filter(f => isBrowserFile(f.file)),
         ...unique.map(f => ({ file: f, docType: 'Auto-detect' }))
       ]);
     }
@@ -548,7 +552,7 @@ const NewOrder = () => {
           {files.length > 0 && (
             <div className="space-y-4">
               <div className="flex items-center gap-2 px-2">
-                <File className="w-4 h-4 text-primary" />
+                <FileIcon className="w-4 h-4 text-primary" />
                 <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{files.length} File{files.length > 1 ? 's' : ''} Selected</span>
               </div>
               <div className="space-y-3">
