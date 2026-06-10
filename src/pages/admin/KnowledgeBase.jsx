@@ -219,6 +219,48 @@ const getMetric = (data, keys, fallback = 0) => {
   return fallback;
 };
 
+const countValues = (values) => (
+  values.reduce((map, value) => {
+    if (!value) return map;
+    map.set(value, (map.get(value) || 0) + 1);
+    return map;
+  }, new Map())
+);
+
+const includesAllOccurrences = (selectedValues, visibleValues) => {
+  if (!visibleValues.length) return false;
+  const selectedCounts = countValues(selectedValues);
+  const visibleCounts = countValues(visibleValues);
+
+  return [...visibleCounts.entries()].every(([value, count]) => (
+    (selectedCounts.get(value) || 0) >= count
+  ));
+};
+
+const removeOccurrences = (selectedValues, valuesToRemove) => {
+  const removeCounts = countValues(valuesToRemove);
+  return selectedValues.filter((value) => {
+    const remaining = removeCounts.get(value) || 0;
+    if (!remaining) return true;
+    removeCounts.set(value, remaining - 1);
+    return false;
+  });
+};
+
+const addMissingOccurrences = (selectedValues, visibleValues) => {
+  const selectedCounts = countValues(selectedValues);
+  const additions = [];
+
+  countValues(visibleValues).forEach((visibleCount, value) => {
+    const missing = visibleCount - (selectedCounts.get(value) || 0);
+    for (let index = 0; index < missing; index += 1) {
+      additions.push(value);
+    }
+  });
+
+  return [...selectedValues, ...additions];
+};
+
 const StatusBadge = ({ status }) => {
   const value = String(status || 'pending').toLowerCase();
   const map = {
@@ -1287,6 +1329,7 @@ const KnowledgeBase = () => {
   const [executingMerge, setExecutingMerge] = useState(false);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [highlightedRuleId, setHighlightedRuleId] = useState(null);
+  const [extractionProgress, setExtractionProgress] = useState(null);
 
   const diseaseKey = disease.trim().toLowerCase() || DEFAULT_DISEASE;
 
@@ -1342,11 +1385,70 @@ const KnowledgeBase = () => {
     }
   }, [diseaseKey, userId]);
 
+  const pollDocumentStatuses = useCallback((documentIds) => {
+    const intervals = {};
+
+    documentIds.forEach((docId) => {
+      intervals[docId] = setInterval(async () => {
+        try {
+          const res = await fetch(`${BASE_URL}/admin/documents/${docId}/status`, {
+            headers: { 'x-user-id': userId },
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) return;
+
+          const status = data.status;
+          const stepMessage = data.step_message || '';
+
+          setExtractionProgress((prev) => {
+            if (!prev) return prev;
+            const completed = (status === 'complete' || status === 'failed')
+              ? [...new Set([...prev.completed, docId])]
+              : prev.completed;
+            return {
+              ...prev,
+              completed,
+              stepMessages: { ...prev.stepMessages, [docId]: stepMessage },
+            };
+          });
+
+          if (status === 'complete' || status === 'failed') {
+            clearInterval(intervals[docId]);
+          }
+        } catch {
+          // Polling is best-effort; the next tick can recover.
+        }
+      }, 5000);
+    });
+  }, [userId]);
+
   useEffect(() => {
     setSelectedRuleIds([]);
     refreshAll();
     if (activeTab === 'active') fetchMergeSuggestions();
   }, [activeTab, fetchMergeSuggestions, refreshAll]);
+
+  useEffect(() => {
+    if (!extractionProgress) return;
+    const { documentIds, completed } = extractionProgress;
+    if (completed.length < documentIds.length) return;
+
+    toast.success('Structured extraction complete. Rules are now active.');
+    setExtractionProgress(null);
+    setActiveTab('active');
+    refreshAll({ silent: true });
+    fetchMergeSuggestions();
+  }, [extractionProgress, fetchMergeSuggestions, refreshAll]);
+
+  useEffect(() => {
+    if (!extractionProgress) return;
+    const handler = (event) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [extractionProgress]);
 
   const stats = useMemo(() => ({
     pending: pendingRules.length,
@@ -1400,10 +1502,10 @@ const KnowledgeBase = () => {
 
   const toggleAllPending = () => {
     const visibleIds = filteredPendingRules.map(getRuleId).filter(Boolean);
-    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedRuleIds.includes(id));
+    const allSelected = includesAllOccurrences(selectedRuleIds, visibleIds);
     setSelectedRuleIds((previous) => {
-      if (allSelected) return previous.filter((id) => !visibleIds.includes(id));
-      return [...new Set([...previous, ...visibleIds])];
+      if (allSelected) return removeOccurrences(previous, visibleIds);
+      return addMissingOccurrences(previous, visibleIds);
     });
   };
 
@@ -1608,13 +1710,25 @@ const KnowledgeBase = () => {
       }
 
       const count = getMetric(data, ['approved_count', 'rules_approved', 'count'], selectedRuleIds.length);
-      const tokens = getMetric(data, ['tokens_used', 'token_count'], 0);
-      const seconds = getMetric(data, ['seconds', 'duration_seconds', 'elapsed_seconds'], 0);
-      toast.success(`${count} rules approved and expanded (${tokens} tokens used, ${seconds} seconds)`, { id: toastId });
+      const documentIds = data.document_ids || [];
+
+      if (!documentIds.length) {
+        toast.success(`${count} rules approved`, { id: toastId });
+        setSelectedRuleIds([]);
+        await refreshAll({ silent: true });
+        await fetchMergeSuggestions();
+        return;
+      }
+
+      toast.dismiss(toastId);
       setSelectedRuleIds([]);
-      setActiveTab('active');
-      await refreshAll({ silent: true });
-      await fetchMergeSuggestions();
+      setExtractionProgress({
+        documentIds,
+        completed: [],
+        stepMessages: Object.fromEntries(documentIds.map((id) => [id, 'Starting...'])),
+        docLabels: Object.fromEntries(documentIds.map((id) => [id, `${id.slice(0, 8)}...`])),
+      });
+      pollDocumentStatuses(documentIds);
     } catch (error) {
       toast.error(error.message || 'Failed to approve rules', { id: toastId });
       await fetchRules('pending', { silent: true });
@@ -1693,8 +1807,10 @@ const KnowledgeBase = () => {
   };
 
   const selectedCount = selectedRuleIds.length;
-  const visiblePendingIds = filteredPendingRules.map(getRuleId).filter(Boolean);
-  const allVisibleSelected = visiblePendingIds.length > 0 && visiblePendingIds.every((id) => selectedRuleIds.includes(id));
+  const visiblePendingIds = useMemo(() => (
+    filteredPendingRules.map(getRuleId).filter(Boolean)
+  ), [filteredPendingRules]);
+  const allVisibleSelected = includesAllOccurrences(selectedRuleIds, visiblePendingIds);
   const isApproving = bulkLoading === 'approve';
   const isRejecting = bulkLoading === 'reject';
   const rulesById = useMemo(() => allRules.reduce((map, rule) => {
@@ -1860,8 +1976,9 @@ const KnowledgeBase = () => {
             onChange={(event) => setDisease(event.target.value)}
             className="h-11 w-full rounded-2xl border-2 border-border/40 bg-card px-4 text-sm font-black sm:w-48"
             placeholder="Disease"
+            disabled={!!extractionProgress}
           />
-          <Button variant="outline" className="h-11 rounded-2xl font-black" onClick={() => refreshAll()} disabled={loading.pending || loading.active || loading.merged}>
+          <Button variant="outline" className="h-11 rounded-2xl font-black" onClick={() => refreshAll()} disabled={loading.pending || loading.active || loading.merged || !!extractionProgress}>
             <RefreshCw className={`mr-2 h-4 w-4 ${(loading.pending || loading.active || loading.merged) ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
@@ -1929,7 +2046,7 @@ const KnowledgeBase = () => {
               </Button>
               <Button
                 className="h-10 rounded-xl text-xs font-black uppercase tracking-widest"
-                disabled={!selectedCount || isApproving || isRejecting}
+                disabled={!selectedCount || isApproving || isRejecting || !!extractionProgress}
                 onClick={() => setApproveConfirmOpen(true)}
               >
                 {isApproving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
@@ -1938,7 +2055,7 @@ const KnowledgeBase = () => {
               <Button
                 variant="outline"
                 className="h-10 rounded-xl text-xs font-black uppercase tracking-widest hover:border-red-500/20 hover:bg-red-500/10 hover:text-red-500"
-                disabled={!selectedCount || isApproving || isRejecting}
+                disabled={!selectedCount || isApproving || isRejecting || !!extractionProgress}
                 onClick={() => setRejectConfirmOpen(true)}
               >
                 {isRejecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
@@ -2043,11 +2160,11 @@ const KnowledgeBase = () => {
               Loading pending rules...
             </div>
           ) : filteredPendingRules.length ? (
-            filteredPendingRules.map((rule) => {
+            filteredPendingRules.map((rule, index) => {
               const ruleId = getRuleId(rule);
               return (
                 <PendingRuleCard
-                  key={ruleId}
+                  key={`${ruleId || 'pending-rule'}-${index}`}
                   rule={rule}
                   selected={selectedRuleIds.includes(ruleId)}
                   onToggle={() => toggleRuleSelection(ruleId)}
@@ -2242,6 +2359,49 @@ const KnowledgeBase = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {extractionProgress && (
+        <div className="fixed bottom-6 right-6 z-50 w-80 overflow-hidden rounded-[1.5rem] border border-border/40 bg-background/95 shadow-2xl backdrop-blur-sm">
+          <div className="flex items-center gap-3 border-b border-border/30 bg-primary/5 px-4 py-3">
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-black">Expanding Rules</p>
+              <p className="text-[10px] font-bold text-muted-foreground">
+                {extractionProgress.completed.length} / {extractionProgress.documentIds.length} complete
+              </p>
+            </div>
+          </div>
+
+          <div className="divide-y divide-border/20">
+            {extractionProgress.documentIds.map((docId) => {
+              const isDone = extractionProgress.completed.includes(docId);
+              const message = extractionProgress.stepMessages[docId] || 'Waiting...';
+              return (
+                <div key={docId} className={`flex items-start gap-3 px-4 py-3 transition-colors ${isDone ? 'bg-emerald-500/5' : ''}`}>
+                  {isDone
+                    ? <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                    : <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-primary" />
+                  }
+                  <div className="min-w-0 space-y-0.5">
+                    <p className="truncate text-xs font-black text-foreground/80">
+                      {extractionProgress.docLabels?.[docId] || `${docId.slice(0, 8)}...`}
+                    </p>
+                    <p className={`text-[11px] font-bold ${isDone ? 'text-emerald-600' : 'text-muted-foreground'}`}>
+                      {isDone ? 'Complete' : message}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="border-t border-border/30 bg-amber-500/5 px-4 py-2">
+            <p className="text-[10px] font-bold text-amber-600">
+              Do not close this tab
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
